@@ -1,0 +1,55 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  theme: {
+    extend: {
+      colors: {
+        ink: "#1b1b1e",
+        outline: "#7b7487",
+        "outline-variant": "#ccc3d8",
+        primary: "#630ed4",
+        "primary-container": "#7c3aed",
+        "primary-fixed": "#eaddff",
+        "primary-fixed-dim": "#d2bbff",
+        "on-primary-container": "#ede0ff",
+        "secondary-container": "#fed01b",
+        "secondary-fixed": "#ffe083",
+        "on-secondary-container": "#6f5900",
+        "tertiary-fixed": "#6dfe9c",
+        "error-container": "#ffdad6",
+        "on-error-container": "#93000a",
+        surface: "#fbf8fc",
+        "surface-lowest": "#ffffff",
+        "surface-container": "#f0edf1",
+        "surface-container-low": "#f6f2f7",
+        "surface-container-high": "#eae7eb",
+        "surface-container-highest": "#e4e1e6",
+        "surface-variant": "#e4e1e6",
+        "on-surface-variant": "#4a4455",
+      },
+      boxShadow: {
+        neo: "4px 4px 0 #1b1b1e",
+        "neo-sm": "2px 2px 0 #1b1b1e",
+        "neo-lg": "6px 6px 0 #1b1b1e",
+      },
+      fontFamily: {
+        body: [
+          "Plus Jakarta Sans",
+          "Inter",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
+        display: [
+          "Bricolage Grotesque",
+          "Plus Jakarta Sans",
+          "ui-sans-serif",
+          "system-ui",
+          "sans-serif",
+        ],
+        mono: ["Space Mono", "ui-monospace", "SFMono-Regular", "monospace"],
+      },
+    },
+  },
+  plugins: [],
+};
