@@ -6,7 +6,7 @@ DrawBuddy는 갈틱폰 스타일의 웹 기반 글/그림 릴레이 게임입니
 
 ### 게임 대기실
 
-DrawBuddy 방 화면
+![DrawBuddy 방 화면](docs/images/room.png)
 
 ## 게임 흐름
 
