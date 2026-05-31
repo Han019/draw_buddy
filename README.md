@@ -4,6 +4,10 @@ DrawBuddy는 갈틱폰 스타일의 웹 기반 글/그림 릴레이 게임입니
 
 현재는 **로비 REST API**, **게임 시작 API**, **현재 게임 상태 조회 API**, **React 로비 UI**까지 구현되어 있습니다. 실시간 그림 전송과 채팅은 Django Channels 도입 후 추가할 예정입니다.
 
+### 게임 대기실
+
+DrawBuddy 방 화면
+
 ## 게임 흐름
 
 ```text
@@ -132,11 +136,13 @@ kill <PID>
 
 백엔드 실행 후 아래 URL에서 확인할 수 있습니다.
 
-| 문서 | URL |
-| --- | --- |
-| Swagger UI | `http://127.0.0.1:8000/api/docs/` |
+
+| 문서             | URL                                 |
+| -------------- | ----------------------------------- |
+| Swagger UI     | `http://127.0.0.1:8000/api/docs/`   |
 | OpenAPI schema | `http://127.0.0.1:8000/api/schema/` |
-| ReDoc | `http://127.0.0.1:8000/api/redoc/` |
+| ReDoc          | `http://127.0.0.1:8000/api/redoc/`  |
+
 
 상세 명세:
 
@@ -147,18 +153,20 @@ kill <PID>
 
 ### Backend
 
-| Method | Endpoint | 설명 |
-| --- | --- | --- |
-| `GET` | `/api/` | smoke 응답 |
-| `POST` | `/api/rooms/` | 방 생성 및 방장 참가 |
-| `GET` | `/api/rooms/{room_code}/` | 방 정보 조회 |
-| `POST` | `/api/rooms/{room_code}/join/` | 닉네임으로 방 참가 |
-| `PATCH` | `/api/rooms/{room_code}/ready/` | 본인 준비 상태 변경 |
-| `PATCH` | `/api/rooms/{room_code}/settings/` | 방장이 제한 시간 설정 변경 |
-| `POST` | `/api/rooms/{room_code}/leave/` | 현재 session 참가자 퇴장 |
-| `POST` | `/api/rooms/{room_code}/players/{player_id}/kick/` | 방장이 선택한 참가자 내보내기 |
-| `POST` | `/api/rooms/{room_code}/start/` | 게임 시작 |
-| `GET` | `/api/games/{game_id}/state/` | 현재 참가자의 게임 턴 조회 |
+
+| Method  | Endpoint                                           | 설명                |
+| ------- | -------------------------------------------------- | ----------------- |
+| `GET`   | `/api/`                                            | smoke 응답          |
+| `POST`  | `/api/rooms/`                                      | 방 생성 및 방장 참가      |
+| `GET`   | `/api/rooms/{room_code}/`                          | 방 정보 조회           |
+| `POST`  | `/api/rooms/{room_code}/join/`                     | 닉네임으로 방 참가        |
+| `PATCH` | `/api/rooms/{room_code}/ready/`                    | 본인 준비 상태 변경       |
+| `PATCH` | `/api/rooms/{room_code}/settings/`                 | 방장이 제한 시간 설정 변경   |
+| `POST`  | `/api/rooms/{room_code}/leave/`                    | 현재 session 참가자 퇴장 |
+| `POST`  | `/api/rooms/{room_code}/players/{player_id}/kick/` | 방장이 선택한 참가자 내보내기  |
+| `POST`  | `/api/rooms/{room_code}/start/`                    | 게임 시작             |
+| `GET`   | `/api/games/{game_id}/state/`                      | 현재 참가자의 게임 턴 조회   |
+
 
 게임 시작 시 서버는 다음 작업을 수행합니다.
 
@@ -189,14 +197,16 @@ kill <PID>
 
 ## 주요 데이터 모델
 
-| 모델 | 역할 |
-| --- | --- |
-| `Room` | 방 코드, 상태, 인원 제한, 제한 시간 |
-| `RoomPlayer` | 방 참가자, 닉네임, 방장 및 준비 상태 |
-| `GameSession` | 한 번의 게임 진행 상태 |
-| `GameChain` | 한 명의 첫 문장에서 시작하는 결과 앨범 |
-| `GameTurn` | 문장, 그림, 그림 설명 중 하나의 제출 단계 |
-| `DrawingReplay` | 그림 선 좌표 이벤트 저장 |
+
+| 모델              | 역할                        |
+| --------------- | ------------------------- |
+| `Room`          | 방 코드, 상태, 인원 제한, 제한 시간    |
+| `RoomPlayer`    | 방 참가자, 닉네임, 방장 및 준비 상태    |
+| `GameSession`   | 한 번의 게임 진행 상태             |
+| `GameChain`     | 한 명의 첫 문장에서 시작하는 결과 앨범    |
+| `GameTurn`      | 문장, 그림, 그림 설명 중 하나의 제출 단계 |
+| `DrawingReplay` | 그림 선 좌표 이벤트 저장            |
+
 
 ## 테스트
 
@@ -259,4 +269,3 @@ POST /api/games/{game_id}/turns/{turn_id}/prompt/
 - WebSocket 도입 후 재접속 유예 시간과 heartbeat 정책 적용
 
 운영 안정성 정책은 [백엔드 TODO](docs/BACKEND_TODO.md#10-운영-안정성-todo)에 정리되어 있습니다.
-
