@@ -1,8 +1,10 @@
 # DrawBuddy Backend TODO
 
-작성 기준일: 2026-05-26
+작성 기준일: 2026-05-27
 
-이 문서는 현재 `backend/` 코드 기준으로 확인된 구현 상태, 오류, REST API 구현 순서, Channels/WebSocket 추가 순서, Swagger 노출 체크리스트를 정리합니다.
+이 문서는 현재 코드 기준 구현 상태와 앞으로의 백엔드 구현 순서를 정리합니다. DrawBuddy의 게임 방향은 **갈틱폰식 글/그림 릴레이 + 로비/결과 채팅 + 마지막 작성자 공개**입니다.
+
+Discord Activity는 현재 범위에서 제외합니다. 대신 일반 웹 앱에서 Discord OAuth 로그인을 지원합니다.
 
 ## 0. 개발 서버 실행/종료 방법
 
@@ -37,9 +39,9 @@ npm run dev -- --host 127.0.0.1
 http://127.0.0.1:5173/
 ```
 
-이미 `5173` 포트를 사용 중이면 Vite가 `5174`, `5175`처럼 다음 포트로 자동 실행할 수 있습니다. 프론트에서 백엔드 API를 호출할 때는 `http://127.0.0.1:8000/api/...`를 직접 쓰지 않고 `/api/...`를 사용합니다. 그래야 Vite proxy를 통해 Django 서버로 전달됩니다.
+`5173` 포트를 이미 사용 중이면 Vite가 `5174`, `5175`처럼 다음 포트로 실행할 수 있습니다. 프론트에서 API를 호출할 때는 `http://127.0.0.1:8000/api/...`를 직접 쓰지 않고 `/api/...`를 사용합니다.
 
-### 서버 정상 종료
+### 서버 끄기
 
 서버를 실행 중인 터미널에서 아래 키를 누릅니다.
 
@@ -47,11 +49,7 @@ http://127.0.0.1:5173/
 Ctrl + C
 ```
 
-백엔드와 프론트엔드는 각각 실행한 터미널에서 따로 종료해야 합니다.
-
-### 포트가 계속 잡혀 있을 때 확인
-
-터미널을 닫았는데도 서버가 남아 있으면 아래 명령으로 확인합니다.
+터미널을 닫았는데 포트가 계속 잡혀 있으면 아래 명령으로 확인합니다.
 
 ```bash
 lsof -nP -iTCP:8000 -sTCP:LISTEN
@@ -60,440 +58,828 @@ lsof -nP -iTCP:5174 -sTCP:LISTEN
 lsof -nP -iTCP:5175 -sTCP:LISTEN
 ```
 
-출력의 `PID` 값을 확인한 뒤 종료합니다.
+출력된 `PID`를 종료합니다.
 
 ```bash
 kill <PID>
 ```
 
-예시:
-
-```bash
-kill 12345
-```
-
-그래도 종료되지 않을 때만 마지막 수단으로 강제 종료합니다.
+마지막 수단으로만 강제 종료합니다.
 
 ```bash
 kill -9 <PID>
 ```
 
-## 1. 현재 코드 기준 이미 구현된 부분
+## 1. 현재 구현된 부분
 
-### Django 프로젝트 구조
+### 1.1 Django 설정
 
-현재 확인된 구조:
+- `game` 앱 등록됨.
+- `rest_framework` 등록됨.
+- `drf_spectacular` 등록됨.
+- SQLite 사용.
+- `REST_FRAMEWORK["DEFAULT_SCHEMA_CLASS"]` 설정됨.
+- `CSRF_TRUSTED_ORIGINS`에 Vite 개발 서버 포트 등록됨.
+  - `5173`
+  - `5174`
+  - `5175`
 
-```text
-backend/
-├── manage.py
-├── config/
-│   ├── settings.py
-│   ├── urls.py
-│   ├── asgi.py
-│   └── wsgi.py
-└── game/
-    ├── models.py
-    ├── views.py
-    ├── urls.py
-    ├── admin.py
-    └── migrations/
-```
+### 1.2 Swagger / OpenAPI
 
-### 설정
+| URL | 상태 |
+| --- | --- |
+| `/api/schema/` | 구현됨 |
+| `/api/docs/` | 구현됨 |
+| `/api/redoc/` | 구현됨 |
 
-- `game` 앱이 `INSTALLED_APPS`에 등록되어 있습니다.
-- `rest_framework`가 `INSTALLED_APPS`에 등록되어 있습니다.
-- `drf_spectacular`가 `INSTALLED_APPS`에 등록되어 있습니다.
-- `REST_FRAMEWORK["DEFAULT_SCHEMA_CLASS"]`가 `drf_spectacular.openapi.AutoSchema`로 설정되어 있습니다.
-- SQLite DB를 사용합니다.
-- `django.contrib.sessions.middleware.SessionMiddleware`가 등록되어 있어 session 기반 MVP 구현이 가능합니다.
+### 1.3 모델
 
-### Swagger / OpenAPI URL
-
-현재 `backend/config/urls.py` 기준으로 아래 URL은 의도한 형태로 연결되어 있습니다.
-
-| URL | View | 상태 |
-| --- | --- | --- |
-| `/api/schema/` | `SpectacularAPIView` | 구현됨 |
-| `/api/docs/` | `SpectacularSwaggerView` | 구현됨 |
-| `/api/redoc/` | `SpectacularRedocView` | 구현됨 |
-
-### 현재 모델 초안
-
-`backend/game/models.py`에 아래 모델 초안이 있습니다.
+현재 `backend/game/models.py` 기준:
 
 - `Room`
-- `GameSession`
 - `RoomPlayer`
+- `GameSession`
+- `GameChain`
+- `GameTurn`
+- `DrawingReplay`
+
+최근 반영된 모델 변경:
+
+- `Room.draw_time`
+- `Room.write_time`
+- `Room.updated_at`
+- `RoomPlayer`의 `unique_room_nickname` 제약
+- `GameSession.current_turn_number`
+- `GameSession.finished_at`
+- `GameChain`
+- `GameTurn`
+- `DrawingReplay`
 
 현재 `related_name` 상태:
 
 - `RoomPlayer.room`: `related_name="players"`
 - `GameSession.room`: `related_name="games"`
 
-따라서 이전에 발생했던 `related_name="players"` 중복으로 인한 Django reverse accessor 충돌은 현재 코드에는 남아 있지 않습니다.
+따라서 예전에 발생했던 `related_name="players"` 중복 충돌은 현재 코드에는 없습니다.
 
-### 현재 API
+### 1.4 Serializer
 
-`backend/game/views.py`:
+현재 `backend/game/serializers.py` 기준:
 
-- `index(request)`가 `"game start"` 문자열을 반환합니다.
+- `RoomPlayerSerializer`
+- `RoomSerializer`
+- `RoomCreateRequestSerializer`
+- `RoomJoinRequestSerializer`
+- `ReadyUpdateSerializer`
+- `RoomSettingsUpdateSerializer`
+- `GameStartResponseSerializer`
+- `GameStateResponseSerializer`
 
-`backend/game/urls.py`:
+### 1.5 REST API
 
-- `GET /api/`가 `index`에 연결되어 있습니다.
+현재 `backend/game/urls.py` 기준:
 
-MVP에서 필요한 방 생성/참가/조회 API는 아직 없습니다.
+| Method | Endpoint | View | 상태 |
+| --- | --- | --- | --- |
+| `GET` | `/api/` | `index` | 구현됨 |
+| `POST` | `/api/rooms/` | `RoomCreateAPIView` | 구현됨 |
+| `GET` | `/api/rooms/{room_code}/` | `RoomDetailAPIView` | 구현됨 |
+| `POST` | `/api/rooms/{room_code}/join/` | `RoomJoinAPIView` | 구현됨 |
+| `PATCH` | `/api/rooms/{room_code}/ready/` | `RoomReadyAPIView` | 구현됨 |
+| `PATCH` | `/api/rooms/{room_code}/settings/` | `RoomSettingsAPIView` | 구현됨 |
+| `POST` | `/api/rooms/{room_code}/leave/` | `RoomLeaveAPIView` | 구현됨 |
+| `POST` | `/api/rooms/{room_code}/players/{player_id}/kick/` | `RoomKickAPIView` | 구현됨 |
+| `POST` | `/api/rooms/{room_code}/start/` | `RoomStartAPIView` | 구현됨 |
+| `GET` | `/api/games/{game_id}/state/` | `GameStateAPIView` | 구현됨 |
 
-## 2. 오류 또는 수정이 필요한 부분
+### 1.6 세션 기반 참가자 식별
 
-### 최우선 수정 사항
+현재 `backend/game/services/session_player.py` 기준:
 
-1. Python 의존성 실행 환경 정리
+- `bind_room_player(request, player)`
+- `get_current_room_player(request, room)`
+- `unbind_room_player(request, room)`
 
-현재 전역 Python에서 `python manage.py check`를 실행하면 아래 오류로 중단됩니다.
+현재 동작:
+
+- create/join 성공 시 session의 `room_player_ids`에 `{room_code: room_player_id}` 저장.
+- ready/settings/leave/kick/start API에서 session을 보고 현재 요청자의 `RoomPlayer`를 조회.
+
+### 1.7 프론트엔드
+
+현재 `frontend/src` 기준:
+
+- `App.tsx`
+- `api.ts`
+- `screens/LobbyScreen.tsx`
+- `screens/RoomScreen.tsx`
+- `styles.css`
+
+현재 프론트 연결 상태:
+
+- 방 생성 API 연결됨.
+- 방 참가 API 연결됨.
+- 방 조회 API 연결됨.
+- 로비/방 화면 디자인 적용됨.
+- 실제 플레이 화면은 아직 없음.
+
+## 2. 현재 수정 또는 정리가 필요한 부분
+
+### 2.1 게임 방향 변경 반영
+
+이전 문서와 일부 UI에는 캐치마인드식 요소가 섞여 있었습니다.
+
+앞으로는 아래 방향으로 고정합니다.
 
 ```text
-ModuleNotFoundError: No module named 'rest_framework'
+첫 문장 작성
+→ 그림
+→ 그림 설명 문장
+→ 다시 그림
+→ 결과 공개
 ```
 
-`conda`의 `ex` 환경에서는 `djangorestframework`, `drf-spectacular`, `Django`가 설치되어 있으며 아래 명령은 통과합니다.
+우선순위가 낮아진 기능:
+
+- 실시간 정답 제출
+- 정답 판정
+- 현재 그림 담당자 한 명만 그리는 캐치마인드식 라운드
+- 점수 중심 게임 진행
+
+우선순위가 높아진 기능:
+
+- `GameChain`
+- `GameTurn`
+- 작성자 익명 처리
+- 결과 공개 시 작성자 공개
+- Drawing replay
+
+### 2.2 참가자 식별 방식 보강 필요
+
+현재 create/join API는 `RoomPlayer`를 만들고 session에 `room_code -> room_player_id`를 저장합니다.
+
+남은 작업:
+
+- Discord 로그인 사용자는 session의 `discord_user_id`로 식별
+- `RoomPlayer.discord_user` 연결
+- session 만료/유효하지 않은 player id 처리 테스트
+- 여러 방에 동시에 참가했을 때 동작 확인
+
+MVP에서는 session 기반을 우선 권장합니다. Discord 로그인을 해도 방 참가 단위의 권한 검사는 `RoomPlayer` 기준으로 해야 합니다.
+
+### 2.3 Discord 로그인 부재
+
+Discord OAuth 로그인이 아직 구현되어 있지 않습니다.
+
+추가 필요:
+
+- `DiscordUser` 모델
+- Discord OAuth 시작 API
+- Discord OAuth callback API
+- 현재 로그인 사용자 조회 API
+- 로그아웃 API
+- `RoomPlayer.discord_user` 연결
+
+정책:
+
+- Activity는 구현하지 않습니다.
+- OAuth scope는 우선 `identify`만 사용합니다.
+- 이메일은 요청하지 않습니다.
+- 로그인 성공 시 Django session에 `discord_user_id`를 저장합니다.
+- 게스트 닉네임 참가도 당분간 유지합니다.
+- Discord 로그인 상태에서 방 생성/참가 시 `nickname`이 없으면 Discord `global_name` 또는 `username`을 기본 닉네임으로 사용합니다.
+
+필요 환경 변수:
 
 ```text
-conda run -n ex python manage.py check
+DISCORD_CLIENT_ID
+DISCORD_CLIENT_SECRET
+DISCORD_REDIRECT_URI
+FRONTEND_BASE_URL
 ```
 
-정리 필요:
+### 2.4 Room 설정 필드 현황
 
-- `requirements.txt` 또는 `pyproject.toml` 추가
-- 팀 공통 실행 방법 명시
-- 최소 의존성 명시
-  - `Django`
-  - `djangorestframework`
-  - `drf-spectacular`
-  - 추후 `channels`, `channels-redis`
+현재 `Room`에 아래 필드는 추가되었습니다.
 
-2. 모델 변경 후 migration 생성 및 적용
-
-이번 확인에서 아래 모델 오류는 수정되었습니다.
-
-- `GameSession.started_at = models.DateTimeField(auto_now_add=True)`
-- `RoomPlayer.__str__`의 `self.room.code` 참조
-- `RoomPlayer.is_host`
-- `RoomPlayer.score`
-- `RoomPlayer.joined_at`
-
-이제 실제 DB 사용 전 migration이 필요합니다.
-
-```text
-conda run -n ex python manage.py makemigrations game
-conda run -n ex python manage.py migrate
-```
-
-3. Room 모델/API 필드명 정리
-
-### 모델 필드 정리 상태
-
-아래 Room 필드명은 현재 코드에서 API 응답 이름과 동일하게 정리되었습니다.
-
-| 현재 필드 | 상태 |
-| --- | --- |
-| `Room.code` | 정리됨 |
-| `Room.max_players` | 정리됨 |
-| `Room.created_at` | 정리됨 |
-
-### MVP에 필요한 모델 필드 추가
-
-`Room`에 추가 권장:
-
-- `rounds`
 - `draw_time`
-- `word_pack`
+- `write_time`
 - `updated_at`
 
-`RoomPlayer`에 추가 권장:
+정확한 현재 상태:
 
-- 현재 `is_host`, `score`, `joined_at`은 모델에 추가됨
-- migration 생성 및 적용 필요
+- `draw_time`: 구현됨
+- `write_time`: 구현됨
+- `updated_at`: 구현됨
+- `rounds`: 미구현
+- `word_pack`: 미구현
 
-`GameSession`에 추가 권장:
+갈틱폰식 릴레이에서는 `rounds`를 직접 받기보다 기본적으로 참가자 수만큼 턴을 돌리는 방식도 가능합니다. 그래서 `rounds`는 필수는 아니고, `word_pack`도 첫 문장을 사용자가 직접 쓰는 구조라면 우선순위가 낮습니다.
 
-- `round_number`
-- `finished_at`
+### 2.5 게임 시작 API 구현됨
 
-### Migration 상태
+`POST /api/rooms/{room_code}/start/`가 구현되었습니다.
 
-- `backend/game/migrations/`에는 `__init__.py`만 있습니다.
-- SQLite DB에는 Django 기본 auth/session/admin 테이블만 있고, `game` 앱 테이블은 없습니다.
+- 방장 권한 검사
+- 최소 인원 검사
+- 방장을 제외한 참가자 준비 상태 검사
+- `Room.status = playing`
+- `GameSession` 생성
+- 참가자별 `GameChain` 생성
+- 참가자별 첫 문장용 `GameTurn` 생성
+- `DEFAULT_PROMPTS`에서 `random.sample()`로 참가자별 기본 문장을 중복 없이 선택
+- 선택한 기본 문장을 첫 `GameTurn.text`에 저장
 
-수정 필요:
+현재 서비스 파일:
 
-```text
-python manage.py makemigrations game
-python manage.py migrate
+- `backend/game/services/game_start.py`
+- `backend/game/services/default_prompts.py`
+
+현재 `default_prompts.py`의 문장은 `"예시1"` 형태의 임시 값입니다. 기능 흐름 확인 후 실제 문장 목록으로 교체해야 합니다.
+
+추가 정리:
+
+- 현재 함수명은 `get_random_prompt(count)`이지만 여러 문장을 반환하므로 `get_random_prompts(count)`로 변경 권장.
+- 제한 시간 종료 시 미제출 사용자의 기본 문장을 자동 확정하는 처리는 아직 미구현.
+
+### 2.6 현재 게임 상태 조회 API 구현됨
+
+`GET /api/games/{game_id}/state/`가 구현되었습니다.
+
+- session에서 현재 `RoomPlayer` 조회
+- 현재 `GameSession.current_turn_number`에 해당하는 본인 턴 조회
+- `turn.id`, `turn.kind`, `turn.turn_number`, `time_limit`, `turn.text` 반환
+- 응답에 다른 참가자의 닉네임이나 작성자 정보 미포함
+
+추가로 필요한 보완:
+
+- 그림 턴에서는 이전 문장을 `source.text`로 구분해서 반환
+- 그림 설명 턴에서는 이전 그림 식별 정보를 반환
+- 제출 완료 후 대기 상태 표현 검토
+
+### 2.7 게임 진행 API/Serializer 추가 필요
+
+갈틱폰식 릴레이 모델은 현재 코드에 추가되었습니다.
+
+현재 구현된 모델:
+
+- `GameChain`
+- `GameTurn`
+- `DrawingReplay`
+
+아직 추가 필요한 것:
+
+- 턴 제출 API
+- 결과 조회 API
+- 리플레이 조회 API
+- 관련 Serializer
+- 후속 턴 배정 service 함수
+
+### 2.8 작성자 익명 처리 필요
+
+게임 진행 중 API는 이전 턴의 내용만 보여주고, 작성자 정보는 숨겨야 합니다.
+
+서버 내부 저장:
+
+- `GameTurn.player` 저장 필요.
+
+진행 중 응답:
+
+- `player`
+- `nickname`
+- `author`
+
+위 필드를 내려주면 안 됩니다.
+
+결과 조회 응답:
+
+- 작성자 정보를 공개합니다.
+
+### 2.9 RoomSerializer 설정 필드 반영 완료
+
+`RoomSerializer`에 `draw_time`, `write_time`, `updated_at`이 포함되어 있습니다.
+
+현재 필드:
+
+```python
+fields = [
+    "id",
+    "code",
+    "status",
+    "max_players",
+    "draw_time",
+    "write_time",
+    "created_at",
+    "updated_at",
+    "players",
+]
 ```
 
-단, 먼저 모델 오류와 의존성 문제를 해결해야 합니다.
+이 작업을 하지 않으면 settings API로 값을 변경해도 프론트 응답에서 바로 확인하기 어렵습니다.
 
-### Admin 등록 필요
+### 2.9 Admin 등록 필요
 
-`backend/game/admin.py`는 비어 있습니다.
+`backend/game/admin.py`에 모델 등록이 필요합니다.
 
-개발 중 확인 편의를 위해 아래 모델 등록을 권장합니다.
+현재 모델:
 
 - `Room`
 - `RoomPlayer`
 - `GameSession`
+- `GameChain`
+- `GameTurn`
+- `DrawingReplay`
 
-### 개발 서버 연동 설정 검토
+추가 예정 모델:
 
-React/Vite를 별도 포트에서 실행할 예정이면 아래 중 하나가 필요합니다.
+- `DiscordUser`
+- `ChatMessage`
 
-- Vite dev proxy로 `/api`와 `/ws`를 Django 서버로 프록시
-- `django-cors-headers` 추가 및 credential 포함 CORS 설정
-- CSRF 처리 정책 정리
+### 2.10 의존성 파일 부재
 
-MVP에서는 Vite proxy를 우선 권장합니다.
+현재 프로젝트 루트 또는 `backend/`에 Python 의존성 파일이 없습니다.
 
-## 3. REST API 구현 순서
+추가 권장:
 
-### 1단계: 실행 환경과 모델 안정화
+- `requirements.txt`
 
-1. 의존성 파일 추가
-2. `python manage.py check` 통과
-3. 모델 필드명과 오타 정리
-4. `RoomPlayer`의 `is_host`, `score`, `joined_at` migration 반영
-5. `Room`에 `rounds`, `draw_time`, `word_pack` 추가
-6. migration 생성 및 적용
-7. admin 등록
+최소 항목:
 
-### 2단계: Serializer 추가
+- `Django`
+- `djangorestframework`
+- `drf-spectacular`
 
-권장 파일:
+추후 항목:
 
-```text
-backend/game/serializers.py
+- `channels`
+- `channels-redis`
+- `requests` 또는 `httpx`
+
+Discord OAuth를 직접 구현한다면 `requests` 또는 `httpx`가 필요합니다. `django-allauth` 같은 패키지를 쓰는 방법도 있지만, 현재 프로젝트 규모에서는 직접 OAuth code exchange를 구현하는 편이 이해하기 쉽습니다.
+
+### 2.11 OpenAPI 제목 정리
+
+현재 `SPECTACULAR_SETTINGS["TITLE"]`은 `Mini Drawing Game API`입니다.
+
+권장:
+
+```python
+SPECTACULAR_SETTINGS = {
+    "TITLE": "DrawBuddy API",
+    "DESCRIPTION": "갈틱폰식 글/그림 릴레이 게임 API",
+    "VERSION": "1.0.0",
+}
 ```
 
-권장 Serializer:
+## 3. 모델 구현 순서
 
-- `ErrorResponseSerializer`
-- `RoomPlayerSerializer`
-- `RoomSettingsSerializer`
-- `RoomDetailSerializer`
-- `RoomCreateSerializer`
-- `RoomJoinSerializer`
-- `ReadyUpdateSerializer`
-- `GameSessionSerializer`
-- `GameStartResponseSerializer`
-- `LeaveRoomResponseSerializer`
+### 3.1 Discord 로그인 모델 추가
 
-### 3단계: RoomViewSet 추가
-
-권장 파일:
+추가 권장 모델:
 
 ```text
-backend/game/views.py
+DiscordUser
 ```
 
-권장 ViewSet:
+권장 필드:
 
 ```text
-RoomViewSet
+discord_id unique
+username
+global_name
+avatar_hash
+avatar_url
+created_at
+updated_at
 ```
 
-구현 순서:
-
-1. `POST /api/rooms/`
-   - 방 코드 생성
-   - `Room` 생성
-   - 방장 `RoomPlayer` 생성
-   - session에 참가자 정보 저장
-2. `POST /api/rooms/{room_code}/join/`
-   - 방 존재 확인
-   - `waiting` 상태 확인
-   - 정원 확인
-   - 닉네임 중복 확인
-   - 일반 `RoomPlayer` 생성
-   - session에 참가자 정보 저장
-3. `GET /api/rooms/{room_code}/`
-   - 방 상태 반환
-   - 참가자 목록 반환
-   - 현재 session 참가자 반환
-4. `PATCH /api/rooms/{room_code}/ready/`
-   - session 참가자 확인
-   - `waiting` 상태 확인
-   - 본인 `is_ready` 변경
-5. `PATCH /api/rooms/{room_code}/settings/`
-   - session 참가자 확인
-   - 방장 권한 확인
-   - `waiting` 상태 확인
-   - 설정 값 검증 후 저장
-6. `POST /api/rooms/{room_code}/start/`
-   - session 참가자 확인
-   - 방장 권한 확인
-   - 최소 인원 확인
-   - 일반 참가자 전원 ready 확인
-   - `Room.status = "playing"`
-   - `GameSession` 생성
-7. `POST /api/rooms/{room_code}/leave/`
-   - session 참가자 확인
-   - 참가자 삭제 또는 비활성 처리
-   - 방장 퇴장 정책 적용
-
-### 4단계: URL 라우팅 정리
-
-권장 파일:
+`RoomPlayer`에는 아래 필드를 추가합니다.
 
 ```text
-backend/game/urls.py
+discord_user nullable ForeignKey(DiscordUser)
 ```
 
-권장 방식:
+주의:
 
-- DRF `DefaultRouter` 또는 `SimpleRouter` 사용
-- `RoomViewSet` lookup field는 `code`로 설정
-- URL path는 프론트 명세에 맞춰 `/api/rooms/{room_code}/` 형태로 노출
+- Discord 사용자가 여러 방에 참가할 수 있으므로 `DiscordUser`와 `RoomPlayer`는 1:N 관계입니다.
+- 한 방 안에서는 같은 Discord 사용자가 중복 참가하지 못하게 하는 제약을 고려합니다.
+- 게스트 사용자는 `discord_user = null`입니다.
 
-### 5단계: 결과 조회 API 준비
+### 3.2 현재 모델 안정화
 
-추후 구현:
+1. `RoomSerializer` 설정 필드 추가 완료
+   - `draw_time`
+   - `write_time`
+   - `updated_at`
+2. `RoomPlayer.discord_user` 추가
+3. session 기반 참가자 식별 테스트 추가
+4. 같은 방 안에서 닉네임 중복 방지 제약 검증
+5. 같은 방 안에서 Discord 사용자 중복 참가 방지 정책 검토
+6. 필요 시 추가 migration 생성
+7. migration 적용
 
-- `GET /api/games/{game_id}/results/`
+명령:
 
-이 API는 아래 모델이 추가된 뒤 구현하는 것이 좋습니다.
+```bash
+conda activate ex
+cd backend
+python manage.py makemigrations game
+python manage.py migrate
+```
 
-- `Round`
-- `DrawingStroke` 또는 canvas snapshot 저장 모델
-- `AnswerSubmission`
-- `ScoreEvent`
-
-## 4. Channels/WebSocket 추가 순서
-
-현재 Channels는 구현되어 있지 않습니다. REST API가 먼저 안정화된 뒤 추가합니다.
-
-### 1단계: 의존성 및 설정
-
-1. `channels` 설치
-2. `INSTALLED_APPS`에 `channels` 추가
-3. `ASGI_APPLICATION = "config.asgi.application"` 설정
-4. 개발용 channel layer 설정
-   - MVP 초기는 InMemory channel layer 가능
-   - 다중 프로세스/배포 전에는 Redis channel layer 필요
-
-### 2단계: ASGI 라우팅
-
-권장 추가 파일:
+현재 생성된 최신 migration:
 
 ```text
-backend/game/routing.py
+backend/game/migrations/0006_gamesession_current_turn_number_and_more.py
 ```
 
-권장 endpoint:
+현재 `game` 앱 migration은 `0006`까지 적용된 상태입니다.
+
+`0005`에는 아래 변경이 들어 있습니다.
+
+- `Room.draw_time`
+- `Room.write_time`
+- `Room.updated_at`
+- `RoomPlayer.unique_room_nickname`
+
+`0006`에는 아래 변경이 들어 있습니다.
+
+- `GameSession.current_turn_number`
+- `GameSession.finished_at`
+- `GameSession.status` choices 변경
+- `GameChain`
+- `GameTurn`
+- `DrawingReplay`
+- `GameTurn.unique_chain_turn_number`
+
+### 3.3 갈틱폰식 릴레이 모델
+
+현재 구현된 모델:
+
+```text
+GameChain
+GameTurn
+DrawingReplay
+```
+
+`GameChain` 역할:
+
+- 한 사람이 시작한 첫 문장에서 출발한 결과 앨범 하나.
+
+`GameTurn` 역할:
+
+- 각 체인 안의 한 단계 제출물.
+- `prompt`, `drawing`, `guess` 중 하나.
+
+`DrawingReplay` 역할:
+
+- 그림을 이미지가 아니라 선 이벤트 로그로 저장.
+- 결과 화면에서 그림 과정을 재생.
+
+## 4. REST API 구현 순서
+
+### 4.0 현 시점 추천 순서
+
+갈틱폰식 게임 모델, 게임 시작 API, 현재 게임 상태 조회 API까지 구현되었습니다. 이제 첫 문장 제출부터 순서대로 진행합니다.
+
+추천 순서:
+
+1. `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
+2. 모든 참가자의 첫 문장 제출 완료 여부 검사
+3. 후속 턴 배정 service 함수 작성
+4. 첫 그림 턴 생성
+5. 그림 턴의 `state` 응답에 작성자 없는 `source.text` 추가
+6. `POST /api/games/{game_id}/turns/{turn_id}/guess/`
+7. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
+8. `GET /api/games/{game_id}/results/`
+9. `GET /api/replays/{replay_id}/`
+
+### 4.1 Discord 로그인 API
+
+1. `GET /api/auth/me/`
+   - 현재 session의 Discord 로그인 사용자 조회.
+   - 비로그인 상태면 `{"user": null}` 반환.
+
+2. `GET /api/auth/discord/login/`
+   - Discord authorize URL로 redirect.
+   - `state` 생성 후 session에 저장.
+   - `next` query parameter를 session에 저장.
+
+3. `GET /api/auth/discord/callback/`
+   - Discord에서 받은 `code`, `state` 검증.
+   - Discord token endpoint에 code 교환.
+   - Discord user endpoint에서 프로필 조회.
+   - `DiscordUser` 생성 또는 갱신.
+   - session에 `discord_user_id` 저장.
+   - 프론트 URL로 redirect.
+
+4. `POST /api/auth/logout/`
+   - session에서 `discord_user_id` 제거.
+   - 방 참가 session까지 제거할지는 정책 결정.
+
+### 4.2 Room API 보강
+
+1. `PATCH /api/rooms/{room_code}/settings/`
+   - 방장만 가능.
+   - `waiting` 상태에서만 가능.
+   - `draw_time`, `write_time` 수정.
+   - 현재 view/serializer 구현됨.
+   - `RoomSerializer` 설정 필드 반영 완료.
+
+2. `PATCH /api/rooms/{room_code}/ready/`
+   - 본인 준비 상태 변경.
+   - 방장은 준비 예외로 둘지 정책 결정 필요.
+   - 현재 view/serializer 구현됨.
+
+3. `POST /api/rooms/{room_code}/leave/`
+   - 일반 참가자 퇴장.
+   - 방장 퇴장 시 다음 참가자에게 방장 위임.
+   - 참가자가 0명이면 방 삭제 또는 종료.
+   - 현재 구현됨.
+
+4. `POST /api/rooms/{room_code}/start/`
+   - 방장만 가능.
+   - 최소 참가자 수 확인.
+   - 준비 상태 확인.
+   - `Room.status = playing`
+   - `GameSession`, `GameChain`, 첫 `GameTurn` 생성.
+   - 현재 구현됨.
+
+5. `POST /api/rooms/{room_code}/players/{player_id}/kick/`
+   - 방장만 가능.
+   - 대기 중인 방에서만 가능.
+   - 현재 구현됨.
+
+추가 수정:
+
+- `POST /api/rooms/`
+  - Discord 로그인 상태에서는 `RoomPlayer.discord_user`를 연결.
+  - `nickname`이 없으면 Discord 프로필 이름을 기본값으로 사용.
+
+- `POST /api/rooms/{room_code}/join/`
+  - Discord 로그인 상태에서는 같은 방에 같은 Discord 사용자가 이미 참가했는지 확인.
+  - 게스트는 기존 닉네임 중복 검사를 유지.
+
+### 4.3 게임 진행 API
+
+1. `GET /api/games/{game_id}/state/`
+   - 현재 플레이어가 해야 할 작업 반환.
+   - 작성자 정보 숨김.
+   - 현재 구현됨.
+
+2. `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
+   - 첫 문장 제출.
+   - 사용자가 입력하지 못한 경우 서버에 미리 저장된 랜덤 기본 문장을 사용할 예정.
+
+3. `POST /api/games/{game_id}/turns/{turn_id}/guess/`
+   - 그림 보고 설명 문장 제출.
+
+4. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
+   - 그림 제출 완료 처리.
+   - 실제 선 이벤트는 WebSocket으로 저장.
+
+5. 턴 전환 처리
+   - 모든 참가자가 현재 턴을 제출했는지 확인.
+   - 다음 턴 생성 또는 활성화.
+   - 마지막 턴이면 결과 공개 상태로 변경.
+
+### 4.4 결과 API
+
+1. `GET /api/games/{game_id}/results/`
+   - 모든 체인과 턴 반환.
+   - 이 API에서만 작성자 공개.
+
+2. `GET /api/replays/{replay_id}/`
+   - 그림 리플레이 이벤트 반환.
+
+## 5. WebSocket 구현 순서
+
+### 5.1 Channels 기본 설정
+
+1. `channels` 설치.
+2. `INSTALLED_APPS`에 `channels` 추가.
+3. `ASGI_APPLICATION` 설정.
+4. `routing.py` 추가.
+5. 개발 단계에서는 InMemory channel layer로 시작 가능.
+6. 배포 또는 멀티 프로세스 환경에서는 Redis 필요.
+
+### 5.2 로비 WebSocket
+
+Endpoint:
 
 ```text
 /ws/rooms/{room_code}/
 ```
 
-### 3단계: Consumer 추가
+이벤트:
 
-권장 추가 파일:
+- `chat_message`
+- `player_joined`
+- `player_left`
+- `player_ready_changed`
+- `room_settings_changed`
+- `game_started`
+
+정책:
+
+- 로비 채팅은 허용.
+- MVP에서는 DB 저장 없이 실시간 전달만 가능.
+
+### 5.3 게임 진행 WebSocket
+
+Endpoint:
 
 ```text
-backend/game/consumers.py
+/ws/games/{game_id}/
 ```
 
-권장 Consumer:
+이벤트:
+
+- `draw_line`
+- `canvas_cleared`
+- `turn_finished`
+
+정책:
+
+- 게임 진행 중 일반 채팅은 비활성.
+- 그림 이벤트는 다른 참가자에게 실시간 공개하지 않는 것을 기본값으로 함.
+- 서버는 이벤트를 `DrawingReplay.events`에 저장.
+- 서버가 timestamp를 찍는 것을 권장.
+
+### 5.4 결과 WebSocket
+
+Endpoint:
 
 ```text
-RoomConsumer
+/ws/games/{game_id}/results/
 ```
 
-구현 순서:
+이벤트:
 
-1. 방 코드 검증
-2. session 기반 참가자 검증
-3. room group join
-4. `chat_message` 처리
-5. REST API 성공 후 WebSocket 브로드캐스트 연결
-   - `player_joined`
-   - `player_left`
-   - `player_ready_changed`
-   - `room_settings_changed`
-   - `game_started`
-6. 게임 중 이벤트 추가
-   - `draw_line`
-   - `canvas_cleared`
-   - `answer_submitted`
-   - `round_finished`
+- `result_chat_message`
+- `result_reveal_started`
+- `result_reveal_step_changed`
 
-### 4단계: 권한 검증
+정책:
 
-WebSocket에서도 REST API와 동일하게 서버 검증이 필요합니다.
+- 결과 화면 채팅은 허용.
+- 결과 공개 순서 동기화가 필요하면 `result_reveal_step_changed`를 사용.
 
-- 현재 방 참가자인지 확인
-- 현재 그림 담당자만 `draw_line` 허용
-- 현재 그림 담당자만 `canvas_cleared` 허용
-- 정답 검사는 서버에서만 수행
-- 점수는 서버에서만 변경
+## 6. 프론트엔드 화면 추가 순서
 
-## 5. Swagger에 노출할 API 체크리스트
+현재 있음:
 
-### Swagger 기본 설정
+- `LobbyScreen`
+- `RoomScreen`
 
-- [x] `drf_spectacular` 설치 대상으로 등록됨
-- [x] `DEFAULT_SCHEMA_CLASS` 설정됨
-- [x] `/api/schema/` URL 연결됨
-- [x] `/api/docs/` URL 연결됨
-- [x] `/api/redoc/` URL 연결됨
-- [ ] 의존성 설치 후 Swagger UI 실제 접속 확인
-- [ ] `SPECTACULAR_SETTINGS["TITLE"]`을 `DrawBuddy API`로 변경
+추가 필요:
 
-### 최소 MVP REST API
+1. 로그인 UI
+   - Discord 로그인 버튼.
+   - 게스트 닉네임 입력 유지.
+   - 로그인 상태면 Discord 이름/아바타 표시.
+2. `PromptScreen`
+   - 첫 문장 작성.
+3. `DrawingScreen`
+   - Canvas 그림.
+   - 선 이벤트를 WebSocket으로 전송.
+4. `GuessScreen`
+   - 그림을 보고 설명 문장 작성.
+5. `WaitingScreen`
+   - 다른 참가자 제출 대기.
+6. `ResultScreen`
+   - 결과 앨범 공개.
+   - 작성자 공개.
+   - 리플레이 재생.
+   - 결과 채팅.
 
-- [ ] `POST /api/rooms/`
-- [ ] `POST /api/rooms/{room_code}/join/`
-- [ ] `GET /api/rooms/{room_code}/`
-- [ ] `PATCH /api/rooms/{room_code}/ready/`
-- [ ] `POST /api/rooms/{room_code}/start/`
+## 7. Swagger 노출 체크리스트
 
-### 로비 완성 REST API
+현재 Swagger 노출됨:
 
-- [ ] `PATCH /api/rooms/{room_code}/settings/`
-- [ ] `POST /api/rooms/{room_code}/leave/`
+- `POST /api/rooms/`
+- `GET /api/rooms/{room_code}/`
+- `POST /api/rooms/{room_code}/join/`
+- `PATCH /api/rooms/{room_code}/ready/`
+- `PATCH /api/rooms/{room_code}/settings/`
+- `POST /api/rooms/{room_code}/leave/`
+- `POST /api/rooms/{room_code}/players/{player_id}/kick/`
+- `POST /api/rooms/{room_code}/start/`
+- `GET /api/games/{game_id}/state/`
 
-### 추후 확장 REST API
+다음으로 노출할 API:
 
-- [ ] `GET /api/games/{game_id}/results/`
+- `GET /api/auth/me/`
+- `GET /api/auth/discord/login/`
+- `GET /api/auth/discord/callback/`
+- `POST /api/auth/logout/`
 
-### Serializer 문서화
+게임 진행 API:
 
-- [ ] Request serializer 지정
-- [ ] Response serializer 지정
-- [ ] Error response serializer 지정
-- [ ] `@extend_schema(summary=...)` 추가
-- [ ] `@extend_schema(description=...)` 추가
-- [ ] 각 오류 status code 예시 추가
+- `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
+- `POST /api/games/{game_id}/turns/{turn_id}/guess/`
+- `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
+- `GET /api/games/{game_id}/results/`
+- `GET /api/replays/{replay_id}/`
 
-### Swagger 문서 품질 기준
+권장 Serializer:
 
-- [ ] 닉네임 한글 허용 조건 문서화
-- [ ] 방장 권한 필요 API 문서화
-- [ ] session 기반 참가자 식별 정책 문서화
-- [ ] 방 상태 `waiting`, `playing`, `finished` 문서화
-- [ ] `ROOM_FULL`, `NICKNAME_TAKEN`, `PLAYERS_NOT_READY` 등 공통 오류 코드 문서화
-- [ ] WebSocket 이벤트는 Swagger가 아닌 별도 문서에 유지
+- `DiscordUserSerializer`
+- `AuthMeResponseSerializer`
+- `RoomSettingsSerializer`
+- `ReadyUpdateSerializer`
+- `RoomLeaveResponseSerializer`
+- `GameStartResponseSerializer`
+- `GameStateResponseSerializer`
+- `PromptSubmitSerializer`
+- `GuessSubmitSerializer`
+- `DrawingCompleteSerializer`
+- `GameResultSerializer`
+- `DrawingReplaySerializer`
 
-## 6. 권장 커밋 단위
+## 8. 가장 가까운 다음 작업
 
-1. 문서 추가
-   - `docs/API_SPEC.md`
-   - `docs/BACKEND_TODO.md`
-2. 의존성 및 실행 오류 수정
-3. 모델 필드 정리와 migration
-4. Room 생성/참가/조회 API
-5. Ready/settings/start/leave API
-6. Swagger 문서 보강
-7. Channels 로비 이벤트
-8. 게임 라운드/그림/정답 기능
+현재 코드 기준 로비 API, 게임 시작 API, 현재 게임 상태 조회 API까지 구현되었습니다. 다음 순서로 제출과 후속 턴 생성을 추가합니다.
+
+1. `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
+   - 본인 턴인지 확인.
+   - `kind == "prompt"`인지 확인.
+   - 이미 제출한 턴인지 확인.
+   - 사용자가 입력한 문장으로 기본 문장을 덮어쓰기.
+   - `submitted_at` 기록.
+2. 모든 참가자의 첫 문장 제출 완료 여부 검사
+3. 후속 턴 배정 service 함수 작성
+   - 참가자 순서 고정 또는 셔플 정책 결정.
+   - 다음 턴 담당자와 `kind` 계산.
+4. 첫 그림 턴 생성
+5. 그림 턴의 `state` 응답에 작성자 없는 `source.text` 추가
+6. `POST /api/games/{game_id}/turns/{turn_id}/guess/`
+7. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
+8. `GET /api/games/{game_id}/results/`
+9. `GET /api/replays/{replay_id}/`
+10. Discord 로그인 모델/API 추가
+   - 게임 핵심 플로우가 보인 뒤 붙여도 됩니다.
+
+## 9. 구현 시 주의사항
+
+- 게임 진행 중에는 작성자 정보를 응답에 포함하지 않습니다.
+- 결과 조회 API에서만 작성자를 공개합니다.
+- 채팅은 로비와 결과 화면에서만 허용합니다.
+- 게임 진행 중 채팅은 MVP에서 제외합니다.
+- Discord Activity는 구현 범위에서 제외합니다.
+- Discord OAuth secret은 프론트에 노출하지 않습니다.
+- Discord access token은 session 인증에 꼭 필요하지 않으면 저장하지 않습니다.
+- 그림 리플레이는 PNG/영상 저장이 아니라 좌표 이벤트 저장으로 구현합니다.
+- 점수는 현재 모델에 있지만, 릴레이 MVP의 핵심 기능은 아닙니다.
+- 클라이언트가 보낸 `player_id`, `is_host`, `score` 값을 권한 판단에 사용하지 않습니다.
+- 방장 권한, 준비 상태, 턴 소유권은 서버에서 검증합니다.
+
+## 10. 운영 안정성 TODO
+
+### 10.1 방 코드 충돌 재시도
+
+현재 상태:
+
+- `Room.code`에 `unique=True`가 적용되어 있어 DB 중복 저장은 차단됨.
+- `generate_room_code()`가 기존 코드 중복 여부를 검사함.
+
+추가 구현:
+
+1. 방 생성 시 발생 가능한 `IntegrityError` 처리.
+2. 코드 충돌 시 새로운 방 코드를 생성해서 재시도.
+3. 무한 반복을 방지하기 위한 최대 재시도 횟수 설정.
+4. 충돌 재시도 테스트 추가.
+
+### 10.2 비정상 종료 처리
+
+문제:
+
+- 브라우저 강제 종료 또는 인터넷 단절 시 `/leave/`가 호출되지 않을 수 있음.
+- 현재 REST API만으로는 연결 종료를 즉시 감지할 수 없음.
+- 오래된 `Room`, `RoomPlayer`, 게임 데이터가 DB에 남을 수 있음.
+
+MVP 추가 구현:
+
+1. `cleanup_stale_rooms` Django management command 추가.
+2. `Room.updated_at` 기준으로 오래된 방 삭제.
+3. 운영 환경에서 cron 또는 scheduler로 주기 실행.
+4. 삭제 대상과 삭제 결과 로그 기록.
+
+권장 초기 기준:
+
+- `waiting`: 마지막 수정 후 6시간.
+- `playing`: 마지막 수정 후 24시간.
+- `finished`: 결과 보관 정책에 따라 7일.
+
+WebSocket 도입 후 추가 구현:
+
+1. WebSocket `disconnect` 이벤트 처리.
+2. 재접속 유예 시간 적용.
+3. heartbeat 기반 접속 상태 확인.
+4. `RoomPlayer.last_seen_at` 추가 검토.
+5. 멀티 프로세스 환경에서는 실시간 접속 상태를 Redis에 저장.
+
+주의:
+
+- 연결이 끊겼다고 즉시 `RoomPlayer`를 삭제하지 않습니다.
+- heartbeat마다 DB를 갱신하면 쓰기 부하가 증가하므로 DB 반영 주기를 제한합니다.

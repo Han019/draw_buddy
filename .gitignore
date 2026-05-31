@@ -2,3 +2,6 @@ game_room
 lobby
 playing
 .DS_Store
+__pycache__/
+*.pyc
+backend/db.sqlite3
