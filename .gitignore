@@ -1,7 +1,39 @@
+# 사용자 임시 폴더
 game_room
 lobby
 playing
+
+# OS 환경 파일
 .DS_Store
+Thumbs.db
+
+# Python / Django 환경
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 backend/db.sqlite3
+venv/
+env/
+.venv/
+
+# Frontend (Node.js / React / Vite)
+node_modules/
+dist/
+build/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 환경변수 및 보안 파일
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE (VSCode, IntelliJ 등) 및 기타 설정
+.vscode/
+.idea/
+*.swp
+*.swo

@@ -1,6 +1,6 @@
 from django.urls import path
 from . import views
-from .views import (GameStateAPIView, RoomStartAPIView, RoomCreateAPIView, RoomDetailAPIView, RoomJoinAPIView, 
+from .views import (DiscordCallbackAPIView, DiscordLoginAPIView, GameStateAPIView, RoomStartAPIView, RoomCreateAPIView, RoomDetailAPIView, RoomJoinAPIView, 
 RoomKickAPIView, RoomReadyAPIView, RoomSettingsAPIView, RoomLeaveAPIView
 )
 urlpatterns=[
@@ -19,4 +19,9 @@ urlpatterns=[
     path("games/<int:game_id>/state/",GameStateAPIView.as_view(), name="game-state"),
     #첫 문장 제출
     # path("games/<int:game_id>/turns/<int:turn_id>/prompt/",name='')
+
+    #discord관련
+    path('auth/discord/login/',DiscordLoginAPIView.as_view(),name = 'discord-login'),
+    path('auth/discord/callback/',DiscordCallbackAPIView.as_view(),name = 'discord-callback'),
+
 ]

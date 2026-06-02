@@ -28,6 +28,18 @@ class Room(models.Model):
 
 
 #방 관련
+class DiscordUser(models.Model):
+    discord_id = models.CharField(max_length=100, unique=True)
+    username = models.CharField(max_length=100)
+    global_name = models.CharField(max_length=100, null=True, blank=True)
+    avatar_hash = models.CharField(max_length=100, null=True, blank=True)
+    avatar_url = models.URLField(max_length=500, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.global_name or self.username
+
 
 class RoomPlayer(models.Model):
     room = models.ForeignKey(Room, on_delete=models.CASCADE,related_name='players')
@@ -36,6 +48,13 @@ class RoomPlayer(models.Model):
     is_ready = models.BooleanField(default=False)
     score = models.IntegerField(default=0)
     joined_at = models.DateTimeField(auto_now_add=True)
+    discord_user = models.ForeignKey(
+        DiscordUser, 
+        null=True, 
+        blank=True, 
+        on_delete=models.SET_NULL,
+        related_name="room_players"
+    )
 
     class Meta:
         constraints=[

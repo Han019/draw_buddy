@@ -1,5 +1,9 @@
 from django.shortcuts import get_object_or_404
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseRedirect
+
+import os
+import requests
+
 import secrets
 import string
 
@@ -10,7 +14,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import( Room, RoomPlayer, RoomStatus,
-GameSession
+GameSession, DiscordUser
 )
 
 from .serializers import ( GameStateResponseSerializer, ReadyUpdateSerializer, RoomCreateRequestSerializer, RoomJoinRequestSerializer, 
@@ -33,6 +37,91 @@ def generate_room_code():
         if not Room.objects.filter(code=code).exists():
             return code
 
+#디스코드 로그인 api 
+class DiscordLoginAPIView(APIView):
+    @extend_schema(
+        summary = "디스코드 로그인 리다이렉트",
+        description = "디스코드 로그인 페이지로 사용자를 이동시킵니다.",
+    )
+    def get(self,request):
+        client_id = os.environ.get("DISCORD_CLIENT_ID")
+        redirect_uri= os.environ.get("DISCORD_REDIRECT_URI")
+
+        discord_url = f"https://discord.com/oauth2/authorize?client_id={client_id}&redirect_uri={redirect_uri}&response_type=code&scope=identify"
+        return HttpResponseRedirect(discord_url)
+
+class DiscordCallbackAPIView(APIView):
+    @extend_schema(
+        summary = "디스코드 로그인 콜백",
+        description = "디스코드에서 돌아오는 코드를 받아 유저 정보를 저장",
+    )
+    def get(self,request):
+        code = request.GET.get("code")
+        if not code:
+            return Response(
+                {'detail': "받은 코드 없음"},
+                status = status.HTTP_400_BAD_REQUEST
+            )
+        client_id = os.environ.get("DISCORD_CLIENT_ID")
+        client_secret = os.environ.get("DISCORD_CLIENT_SECRET")
+        redirect_uri = os.environ.get("DISCORD_REDIRECT_URI")
+
+        #토큰 교한 token exchange
+        token_data = {
+            'grant_type' : 'authorization_code',
+            'code' : code,
+            'redirect_uri' : redirect_uri,
+        }
+        headers = {
+            'Content-Type' : 'application/x-www-form-urlencoded'
+        }
+        r = requests.post("https://discord.com/api/v10/oauth2/token",
+            data = token_data, 
+            headers=headers,
+            auth=(client_id,client_secret)
+        )
+        r.raise_for_status()
+
+        # access token 형태, r
+        # {"access_token": "6qrZcUqja7812RVdnEKjpzOL4CvHBFG",
+        # "token_type": "Bearer",
+        # "expires_in": 604800,
+        # "refresh_token": "D43f5y0ahjqew82jZ4NViEr2YafMKhue",
+        # "scope": "identify"
+        # }
+        token_response = r.json()
+        access_token = token_response.get("access_token")
+        if not access_token:
+            return Response(
+                {'detail':'토큰을 발급받지 못했습니다.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        user_res = requests.get("https://discord.com/api/v10/users/@me",headers={'Authorization':f"Bearer {access_token}"})
+        user_res.raise_for_status()
+
+        user_data = user_res.json()
+        discord_id = user_data.get('id')
+        avatar_hash = user_data.get('avatar')
+
+        avatar_url=None
+        if avatar_hash:
+            avatar_url=f"https://cdn.discordapp.com/avatars/{discord_id}/{avatar_hash}.png"
+        discord_user, created = DiscordUser.objects.update_or_create(
+            discord_id = discord_id,
+            defaults={
+                'username' : user_data.get('username'),
+                'global_name': user_data.get('global_name'),
+                'avatar_hash' : avatar_hash,
+                'avatar_url' : avatar_url,    
+            }
+        )
+
+        #쟝고 세션에 유저의 고유 id를 기록하여 로그인 처리
+        request.session['discord_user_id'] = discord_user.discord_id
+
+        #frontend로 돌려보내기
+        frontend_url = os.environ.get("FRONTEND_BASE_URL", "http://127.0.0.1:5173")
+        return HttpResponseRedirect(frontend_url)
 
 class RoomCreateAPIView(APIView):
     @extend_schema(
