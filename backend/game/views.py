@@ -7,22 +7,27 @@ import requests
 import secrets
 import string
 
+from django.utils import timezone
 from django.db import transaction
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.utils.decorators import method_decorator
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import( Room, RoomPlayer, RoomStatus,
-GameSession, DiscordUser
+from .models import( GameTurn, Room, RoomPlayer, RoomStatus,
+GameSession, DiscordUser, DrawingReplay
 )
 
 from .serializers import ( GameStateResponseSerializer, ReadyUpdateSerializer, RoomCreateRequestSerializer, RoomJoinRequestSerializer, 
-RoomSerializer, RoomSettingsUpdateSerializer, GameStartResponseSerializer
+RoomSerializer, RoomSettingsUpdateSerializer, GameStartResponseSerializer, PromptSubmitSerializer, DrawingCompleteSerializer,
+GuessSubmitSerializer, DrawingReplaySerializer, DiscordUserSerializer, AuthMeResponseSerializer
 )
 
 from .services.session_player import bind_room_player, get_current_room_player, unbind_room_player
 from .services.game_start import start_game
+from .services.turn_manager import check_and_advance_turn
 
 def index(request):
     return HttpResponse("game start")
@@ -36,6 +41,29 @@ def generate_room_code():
 
         if not Room.objects.filter(code=code).exists():
             return code
+
+class CSRFTokenAPIView(APIView):
+    @extend_schema(
+        summary="CSRF 쿠키 발급",
+        description="프론트엔드에서 사용할 CSRF 토큰을 브라우저 쿠키로 발급합니다.",
+        responses={200: dict}
+    )
+    @method_decorator(ensure_csrf_cookie)
+    def get(self, request):
+        return Response({"detail": "CSRF cookie set"}, status=status.HTTP_200_OK)
+
+#render 헬스체크 api 
+class HealthCheckAPIView(APIView):
+    @extend_schema(
+        summary="헬스체크 api",
+        description="render 안 꺼지게 14분마다 api 호출하는 역할",
+        responses ={200:dict}
+    )
+    def get(self,request):
+        return Response(
+            {"detail":"ok", "message":"Backend is running!"},
+            status = status.HTTP_200_OK,
+        )
 
 #디스코드 로그인 api 
 class DiscordLoginAPIView(APIView):
@@ -122,6 +150,41 @@ class DiscordCallbackAPIView(APIView):
         #frontend로 돌려보내기
         frontend_url = os.environ.get("FRONTEND_BASE_URL", "http://127.0.0.1:5173")
         return HttpResponseRedirect(frontend_url)
+
+class AuthMeAPIView(APIView):
+    @extend_schema(
+        summary="현재 로그인 사용자 조회",
+        description="현재 세션에 로그인된 디스코드 사용자 프로필을 반환합니다.(비로그인 시 user:null 반환)",
+        responses={200,AuthMeResponseSerializer}
+    )
+    def get(self,request):
+        discord_user_id = request.session.get('discord_user_id')
+        
+        if discord_user_id:
+            user = DiscordUser.objects.filter(discord_id= discord_user_id).first()
+            if user:
+                serializer = AuthMeResponseSerializer({'user' : user})
+                return Response(
+                    serializer.data,
+                    status=status.HTTP_200_OK
+                )
+        return Response(
+            {'user':None},
+            status=status.HTTP_200_OK
+        )
+class LogoutAPIView(APIView):
+    @extend_schema(
+        summary="로그아웃",
+        description="현재 세션을 만료시키고 로그아웃 처리합니다.",
+        responses = {200 : dict}
+    )
+    def post(self,request):
+        request.session.flush()
+        return Response(
+            {'logged_out': True},
+            status= status.HTTP_200_OK
+        )
+
 
 class RoomCreateAPIView(APIView):
     @extend_schema(
@@ -442,12 +505,30 @@ class GameStateAPIView(APIView):
                 if turn.kind =="drawing"
                 else game_session.room.write_time
             )
+
+            # 이전 턴(그림을 그려야 할 문장 또는 설명을 써야 할 그림) 정보 조회
+            source_text = None
+            source_replay_id=None
+
+            if turn.turn_number > 0:
+                prev_turn = game_session.turns.filter(
+                    chain=turn.chain,
+                    turn_number=turn.turn_number - 1
+                ).first()
+                if prev_turn:
+                    if prev_turn.kind == GameTurn.Kind.DRAWING and hasattr(prev_turn,'replay'):
+                        source_replay_id = prev_turn.replay.id
+                    else:
+                        source_text = prev_turn.text
+
             turn_data = {
                 'id' : turn.id,
                 'kind' : turn.kind,
                 'turn_number' : turn.turn_number,
                 'time_limit' : time_limit,
                 'text' : turn.text,
+                'source_text' : source_text,
+                'source_replay_id': source_replay_id,
             }
         serializer = GameStateResponseSerializer(
             {
@@ -461,4 +542,195 @@ class GameStateAPIView(APIView):
         return Response(
             serializer.data,
             status=status.HTTP_200_OK,
+        )
+
+#첫 문장 제출 api
+class PromptSubmitAPIView(APIView):
+    @extend_schema(
+        summary = "첫 문장 제출",
+        description = "첫 문장을 작성하는 api입니다.",
+    )
+    @transaction.atomic
+    def post(self, request,game_id, turn_id):
+        game_session = get_object_or_404(GameSession, id= game_id)
+        player = get_current_room_player(request, game_session.room)
+
+        #자신의 턴인지 확인
+        turn = get_object_or_404(
+            GameTurn,
+            id= turn_id,
+            game_session=game_session,
+            player=player,
+            kind = GameTurn.Kind.PROMPT,
+            turn_number = game_session.current_turn_number
+        )
+        
+        if turn.submitted_at:
+            return Response(
+                {'detail':'이미 제출된 턴입니다.'},
+                status = status.HTTP_409_CONFLICT
+            )
+        serializer = PromptSubmitSerializer(data= request.data)
+        serializer.is_valid(raise_exception = True)
+
+        turn.text = serializer.validated_data['text']
+        turn.submitted_at = timezone.now()
+        turn.save(update_fields =['text','submitted_at'])
+
+        check_and_advance_turn(game_session)
+
+        return Response(
+            {
+                'turn_id': turn.id, 
+                'kind' : turn.kind,
+                'submitted' : True
+            },
+            status=status.HTTP_200_OK
+        )
+
+class ReplayRetrieveAPIView(APIView):
+    @extend_schema(
+        summary="그림 리플레이 조회",
+        description="특정 그림 턴의 선 좌표 이벤트(리플레이 데이터)를 조회합니다.",
+        responses={200: DrawingReplaySerializer}
+    )
+    def get(self, request, replay_id):
+        replay = get_object_or_404(DrawingReplay, id=replay_id)
+        serializer = DrawingReplaySerializer(replay)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+class GameResultAPIView(APIView):
+    @extend_schema(
+        summary="게임 결과 앨범 조회",
+        description="모든 턴이 종료된 후 각 체인(릴레이)의 결과물과 작성자를 공개합니다.",
+        responses={200: dict}
+    )
+    def get(self, request, game_id):
+        game_session = get_object_or_404(GameSession, id=game_id)
+        
+        # 진행 중인 게임의 결과는 훔쳐볼 수 없도록 막기
+        if game_session.status not in [GameSession.Status.REVEALING, GameSession.Status.FINISHED]:
+            return Response({"detail": "아직 게임이 종료되지 않았습니다."}, status=status.HTTP_403_FORBIDDEN)
+
+        chains_data = []
+        for chain in game_session.chains.all().order_by('order_index', 'id'):
+            turns_data = []
+            for turn in chain.turns.all().order_by('turn_number'):
+                turn_info = {
+                    "turn_number": turn.turn_number,
+                    "kind": turn.kind,
+                    "author": {
+                        "id": turn.player.id,
+                        "nickname": turn.player.nickname,
+                    },
+                }
+                if turn.kind in [GameTurn.Kind.PROMPT, GameTurn.Kind.GUESS]:
+                    turn_info["text"] = turn.text
+                elif turn.kind == GameTurn.Kind.DRAWING and hasattr(turn, 'replay'):
+                    turn_info["replay_id"] = turn.replay.id
+                turns_data.append(turn_info)
+
+            chains_data.append({"chain_id": chain.id, "turns": turns_data})
+
+        return Response({
+            "game_id": game_session.id,
+            "room_code": game_session.room.code,
+            "chains": chains_data
+        }, status=status.HTTP_200_OK)
+
+class DrawingCompleteAPIView(APIView):
+    @extend_schema(
+        summary="그림 제출 완료",
+        description="그림 턴의 선 이벤트를 저장하고 제출 완료 처리합니다.",
+        request=DrawingCompleteSerializer,
+        responses={200: dict}
+    )
+    @transaction.atomic
+    def post(self, request, game_id, turn_id):
+
+        game_session = get_object_or_404(GameSession, id= game_id)
+        player = get_current_room_player(request, game_session.room)
+
+        turn = get_object_or_404(
+            GameTurn,
+            id= turn_id,
+            game_session=game_session,
+            player=player,
+            kind= GameTurn.Kind.DRAWING,
+            turn_number=game_session.current_turn_number
+        )
+        if turn.submitted_at:
+            return Response(
+                {'detail': '이미 제출된 턴입니다.'},
+                status=status.HTTP_409_CONFLICT,
+            )
+        
+        serializer = DrawingCompleteSerializer(data = request.data)
+        serializer.is_valid(raise_exception=True)
+
+        DrawingReplay.objects.create(
+            game_turn= turn,
+            canvas_width = serializer.validated_data.get('canvas_width',800),
+            canvas_height = serializer.validated_data.get('canvas_height',600),
+            events=serializer.validated_data.get('events',[])
+        )
+
+        turn.submitted_at = timezone.now()
+        turn.save(update_fields=['submitted_at'])
+
+        check_and_advance_turn(game_session)
+
+        return Response(
+            {
+                "turn_id": turn.id,
+                'kind' : turn.kind,
+                'submitted': True
+            },
+            status = status.HTTP_200_OK
+        )
+
+#그림 설명
+class GuessSubmitAPIView(APIView):
+    @extend_schema(
+        summary="그림 설명 제출",
+        description="이전 턴의 그림을 보고 그에 대한 설명을 제출합니다.",
+        request = GuessSubmitSerializer,
+        responses={200 : dict}
+    )
+
+    @transaction.atomic
+    def post(self, request, game_id, turn_id):
+        game_session = get_object_or_404(GameSession, id = game_id)
+        player = get_current_room_player( request, game_session.room)
+
+        turn = get_object_or_404(
+            GameTurn,
+            id= turn.id,
+            game_session = game_session,
+            player = player,
+            kind = GameTurn.Kind.GUESS,
+            turn_number = game_session.current_turn_number
+        )
+
+        if turn.submitted_at:
+            return Response(
+                {'detail':'이미 제출된 턴입니다.'},
+                status = status.HTTP_409_CONFLICT
+            )
+        serializer = GuessSubmitSerializer(data=request.data)
+        serializer.is_valid(raise_exception = True)
+
+        turn.text = serializer.validated_data['text']
+        turn.submitted_at = timezone.now()
+        turn.save(update_fields=['text','submitted_at'])
+
+        check_and_advance_turn(game_session)
+
+        return Response(
+            {
+                'turn_id' : turn.id,
+                'kind' : turn.kind,
+                'submitted' : True
+            },
+            status=status.HTTP_200_OK
         )

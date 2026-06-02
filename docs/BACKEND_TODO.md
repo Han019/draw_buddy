@@ -151,6 +151,8 @@ kill -9 <PID>
 | `POST` | `/api/rooms/{room_code}/players/{player_id}/kick/` | `RoomKickAPIView` | 구현됨 |
 | `POST` | `/api/rooms/{room_code}/start/` | `RoomStartAPIView` | 구현됨 |
 | `GET` | `/api/games/{game_id}/state/` | `GameStateAPIView` | 구현됨 |
+| `POST` | `/api/games/{game_id}/turns/{turn_id}/prompt/` | `PromptSubmitAPIView` | 구현됨 |
+| `GET` | `/api/health/` | `HealthCheckAPIView` | 구현됨 |
 
 ### 1.6 세션 기반 참가자 식별
 
@@ -227,18 +229,15 @@ kill -9 <PID>
 
 MVP에서는 session 기반을 우선 권장합니다. Discord 로그인을 해도 방 참가 단위의 권한 검사는 `RoomPlayer` 기준으로 해야 합니다.
 
-### 2.3 Discord 로그인 부재
+### 2.3 Discord 로그인 현황
 
-Discord OAuth 로그인이 아직 구현되어 있지 않습니다.
+Discord OAuth 로그인의 핵심 모델과 로그인/콜백 API가 구현되었습니다.
 
-추가 필요:
+추가 필요 (구현 완료):
 
-- `DiscordUser` 모델
-- Discord OAuth 시작 API
-- Discord OAuth callback API
-- 현재 로그인 사용자 조회 API
-- 로그아웃 API
-- `RoomPlayer.discord_user` 연결
+- ~~현재 로그인 사용자 조회 API~~
+- ~~로그아웃 API~~
+- ~~`RoomPlayer.discord_user` 연결~~
 
 정책:
 
@@ -317,9 +316,9 @@ FRONTEND_BASE_URL
 - 그림 설명 턴에서는 이전 그림 식별 정보를 반환
 - 제출 완료 후 대기 상태 표현 검토
 
-### 2.7 게임 진행 API/Serializer 추가 필요
+### 2.7 게임 진행 API/Serializer (구현 완료)
 
-갈틱폰식 릴레이 모델은 현재 코드에 추가되었습니다.
+갈틱폰식 릴레이 모델 및 관련 API는 현재 코드에 모두 추가되었습니다.
 
 현재 구현된 모델:
 
@@ -327,13 +326,6 @@ FRONTEND_BASE_URL
 - `GameTurn`
 - `DrawingReplay`
 
-아직 추가 필요한 것:
-
-- 턴 제출 API
-- 결과 조회 API
-- 리플레이 조회 API
-- 관련 Serializer
-- 후속 턴 배정 service 함수
 
 ### 2.8 작성자 익명 처리 필요
 
@@ -433,9 +425,9 @@ SPECTACULAR_SETTINGS = {
 
 ## 3. 모델 구현 순서
 
-### 3.1 Discord 로그인 모델 추가
+### 3.1 Discord 로그인 모델 (구현 완료)
 
-추가 권장 모델:
+추가된 모델:
 
 ```text
 DiscordUser
@@ -542,30 +534,30 @@ DrawingReplay
 
 갈틱폰식 게임 모델, 게임 시작 API, 현재 게임 상태 조회 API까지 구현되었습니다. 이제 첫 문장 제출부터 순서대로 진행합니다.
 
-추천 순서:
+진행 상황: (전부 구현 완료)
 
-1. `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
-2. 모든 참가자의 첫 문장 제출 완료 여부 검사
-3. 후속 턴 배정 service 함수 작성
-4. 첫 그림 턴 생성
-5. 그림 턴의 `state` 응답에 작성자 없는 `source.text` 추가
-6. `POST /api/games/{game_id}/turns/{turn_id}/guess/`
-7. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
-8. `GET /api/games/{game_id}/results/`
-9. `GET /api/replays/{replay_id}/`
+1. ~~`POST /api/games/{game_id}/turns/{turn_id}/prompt/`~~ (구현 완료)
+2. ~~모든 참가자의 첫 문장 제출 완료 여부 검사~~ (구현 완료)
+3. ~~후속 턴 배정 service 함수 작성~~ (구현 완료)
+4. ~~첫 그림 턴 생성~~ (구현 완료)
+5. ~~그림 턴의 `state` 응답에 작성자 없는 `source.text` 추가~~ (구현 완료)
+6. ~~`POST /api/games/{game_id}/turns/{turn_id}/guess/`~~ (구현 완료)
+7. ~~`POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`~~ (구현 완료)
+8. ~~`GET /api/games/{game_id}/results/`~~ (구현 완료)
+9. ~~`GET /api/replays/{replay_id}/`~~ (구현 완료)
 
 ### 4.1 Discord 로그인 API
 
-1. `GET /api/auth/me/`
-   - 현재 session의 Discord 로그인 사용자 조회.
-   - 비로그인 상태면 `{"user": null}` 반환.
+1. `GET /api/auth/me/` (구현 완료)
+   - 현재 session의 Discord 로그인 사용자 조회 완료.
+   - 비로그인 상태면 `{"user": null}` 반환 처리 완료.
 
 2. `GET /api/auth/discord/login/`
    - Discord authorize URL로 redirect.
    - `state` 생성 후 session에 저장.
    - `next` query parameter를 session에 저장.
 
-3. `GET /api/auth/discord/callback/`
+3. `GET /api/auth/discord/callback/` (구현 완료)
    - Discord에서 받은 `code`, `state` 검증.
    - Discord token endpoint에 code 교환.
    - Discord user endpoint에서 프로필 조회.
@@ -573,9 +565,8 @@ DrawingReplay
    - session에 `discord_user_id` 저장.
    - 프론트 URL로 redirect.
 
-4. `POST /api/auth/logout/`
-   - session에서 `discord_user_id` 제거.
-   - 방 참가 session까지 제거할지는 정책 결정.
+4. `POST /api/auth/logout/` (구현 완료)
+   - session 만료 및 `discord_user_id` 제거 처리 완료.
 
 ### 4.2 Room API 보강
 
@@ -629,27 +620,29 @@ DrawingReplay
 
 2. `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
    - 첫 문장 제출.
+   - 현재 구현됨.
    - 사용자가 입력하지 못한 경우 서버에 미리 저장된 랜덤 기본 문장을 사용할 예정.
 
-3. `POST /api/games/{game_id}/turns/{turn_id}/guess/`
+3. `POST /api/games/{game_id}/turns/{turn_id}/guess/` (구현 완료)
    - 그림 보고 설명 문장 제출.
+   - 제출 완료 시 다음 턴 자동 생성 로직 연동 완료.
 
-4. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
+4. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/` (구현 완료)
    - 그림 제출 완료 처리.
-   - 실제 선 이벤트는 WebSocket으로 저장.
+   - 실제 선 이벤트는 향후 WebSocket으로 저장 예정 (현재는 API로 수신 완료 처리).
 
-5. 턴 전환 처리
-   - 모든 참가자가 현재 턴을 제출했는지 확인.
-   - 다음 턴 생성 또는 활성화.
+5. 턴 전환 처리 (구현 완료)
+   - 모든 참가자가 현재 턴을 제출했는지 확인 (`turn_manager.py`).
+   - 백트래킹 알고리즘을 활용하여 참가자가 이전에 참여했던 체인(릴레이)과 겹치지 않도록 무작위로 다음 턴을 배정.
    - 마지막 턴이면 결과 공개 상태로 변경.
 
 ### 4.4 결과 API
 
-1. `GET /api/games/{game_id}/results/`
+1. `GET /api/games/{game_id}/results/` (구현 완료)
    - 모든 체인과 턴 반환.
    - 이 API에서만 작성자 공개.
 
-2. `GET /api/replays/{replay_id}/`
+2. `GET /api/replays/{replay_id}/` (구현 완료)
    - 그림 리플레이 이벤트 반환.
 
 ## 5. WebSocket 구현 순서
@@ -766,21 +759,16 @@ Endpoint:
 - `POST /api/rooms/{room_code}/players/{player_id}/kick/`
 - `POST /api/rooms/{room_code}/start/`
 - `GET /api/games/{game_id}/state/`
-
-다음으로 노출할 API:
-
-- `GET /api/auth/me/`
-- `GET /api/auth/discord/login/`
-- `GET /api/auth/discord/callback/`
-- `POST /api/auth/logout/`
-
-게임 진행 API:
-
 - `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
 - `POST /api/games/{game_id}/turns/{turn_id}/guess/`
 - `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
 - `GET /api/games/{game_id}/results/`
 - `GET /api/replays/{replay_id}/`
+- `GET /api/health/`
+- `GET /api/auth/me/`
+- `GET /api/auth/discord/login/`
+- `GET /api/auth/discord/callback/`
+- `POST /api/auth/logout/`
 
 권장 Serializer:
 
@@ -799,26 +787,21 @@ Endpoint:
 
 ## 8. 가장 가까운 다음 작업
 
-현재 코드 기준 로비 API, 게임 시작 API, 현재 게임 상태 조회 API까지 구현되었습니다. 다음 순서로 제출과 후속 턴 생성을 추가합니다.
+현재 게임 사이클인 턴 제출 로직 및 결과, 리플레이, 인증 API 등 **백엔드 REST API 전체 개발이 완료**되었습니다.
 
-1. `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
-   - 본인 턴인지 확인.
-   - `kind == "prompt"`인지 확인.
-   - 이미 제출한 턴인지 확인.
-   - 사용자가 입력한 문장으로 기본 문장을 덮어쓰기.
-   - `submitted_at` 기록.
-2. 모든 참가자의 첫 문장 제출 완료 여부 검사
-3. 후속 턴 배정 service 함수 작성
-   - 참가자 순서 고정 또는 셔플 정책 결정.
-   - 다음 턴 담당자와 `kind` 계산.
-4. 첫 그림 턴 생성
-5. 그림 턴의 `state` 응답에 작성자 없는 `source.text` 추가
-6. `POST /api/games/{game_id}/turns/{turn_id}/guess/`
-7. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
-8. `GET /api/games/{game_id}/results/`
-9. `GET /api/replays/{replay_id}/`
-10. Discord 로그인 모델/API 추가
-   - 게임 핵심 플로우가 보인 뒤 붙여도 됩니다.
+~~1. 모든 참가자의 첫 문장 제출 완료 여부 검사 로직~~ (완료)
+~~2. 후속 턴 배정 service 함수 작성~~ (완료: 백트래킹 알고리즘을 통한 겹치지 않는 랜덤 턴 배정 적용)
+~~3. 첫 그림 턴 생성~~ (완료)
+~~4. 그림 턴의 `state` 응답에 작성자 없는 `source.text` 추가~~ (완료)
+~~5. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/` (그림 제출 완료)~~ (완료)
+~~6. `POST /api/games/{game_id}/turns/{turn_id}/guess/` (그림 설명 제출 API)~~ (완료)
+~~7. Guess 턴 `state` 응답에 `source_replay_id` 추가~~ (완료)
+~~8. `GET /api/replays/{replay_id}/` (그림 리플레이 데이터 조회 API)~~ (완료)
+~~9. `GET /api/games/{game_id}/results/` (게임 결과 앨범 조회 API)~~ (완료)
+~~10. Discord 로그인 관련 추가 API (`/api/auth/me/`, `/api/auth/logout/`)~~ (완료)
+
+1. 프론트엔드 API 연동 (인게임 화면 UI 마이그레이션 완료, 실제 데이터 Fetch 연결 진행 중)
+2. WebSocket 채널 연결 (채팅 및 실시간 턴 동기화)
 
 ## 9. 구현 시 주의사항
 

@@ -1,7 +1,16 @@
-import { FormEvent, useMemo, useState } from "react";
-import { createRoom, getRoom, joinRoom, Room } from "./api";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import { createRoom, getRoom, joinRoom, Room, getCsrfToken } from "./api";
 import LobbyScreen, { EntryMode } from "./screens/LobbyScreen";
 import RoomScreen from "./screens/RoomScreen";
+
+export type DiscordUser = {
+  id: number;
+  provider: string;
+  discord_id: string;
+  username: string;
+  global_name: string;
+  avatar_url: string;
+};
 
 function normalizeCode(value: string) {
   return value.trim().toUpperCase();
@@ -26,6 +35,43 @@ export default function App() {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">(
     "idle",
   );
+  const [authUser, setAuthUser] = useState<DiscordUser | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
+  useEffect(() => {
+    async function fetchAuth() {
+      try {
+        // 앱이 켜질 때 CSRF 토큰을 쿠키에 설정받습니다.
+        await fetch("/api/csrf/");
+        const res = await fetch("/api/auth/me/");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) {
+            setAuthUser(data.user);
+            setNickname((prev) => prev || data.user.global_name || data.user.username);
+          }
+        }
+      } catch (caught) {
+        console.error("인증 정보를 불러오지 못했습니다.", caught);
+      } finally {
+        setIsAuthLoading(false);
+      }
+    }
+    fetchAuth();
+  }, []);
+
+  async function handleLogout() {
+    try {
+      await fetch("/api/auth/logout/", { 
+        method: "POST",
+        headers: { "X-CSRFToken": getCsrfToken() }
+      });
+      setAuthUser(null);
+      setNickname("");
+    } catch (caught) {
+      console.error("로그아웃 실패", caught);
+    }
+  }
 
   const inviteUrl = useMemo(() => {
     if (!room) {
@@ -143,6 +189,9 @@ export default function App() {
       setMode={setMode}
       setNickname={setNickname}
       setRoomCode={setRoomCode}
+      authUser={authUser}
+      isAuthLoading={isAuthLoading}
+      onLogout={handleLogout}
     />
   );
 }

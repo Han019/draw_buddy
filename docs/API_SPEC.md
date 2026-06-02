@@ -59,6 +59,7 @@ DrawBuddy는 Discord 로그인 또는 게스트 닉네임으로 방에 참가하
   - `GameChain`
   - `GameTurn`
   - `DrawingReplay`
+  - `DiscordUser`
 - Serializer
   - `RoomPlayerSerializer`
   - `RoomSerializer`
@@ -68,6 +69,7 @@ DrawBuddy는 Discord 로그인 또는 게스트 닉네임으로 방에 참가하
   - `RoomSettingsUpdateSerializer`
   - `GameStartResponseSerializer`
   - `GameStateResponseSerializer`
+  - `PromptSubmitSerializer`
 - REST API
   - `GET /api/`
   - `POST /api/rooms/`
@@ -79,6 +81,16 @@ DrawBuddy는 Discord 로그인 또는 게스트 닉네임으로 방에 참가하
   - `POST /api/rooms/{room_code}/players/{player_id}/kick/`
   - `POST /api/rooms/{room_code}/start/`
   - `GET /api/games/{game_id}/state/`
+  - `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
+  - `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
+  - `POST /api/games/{game_id}/turns/{turn_id}/guess/`
+  - `GET /api/games/{game_id}/results/`
+  - `GET /api/replays/{replay_id}/`
+  - `GET /api/health/`
+  - `GET /api/auth/discord/login/`
+  - `GET /api/auth/discord/callback/`
+  - `GET /api/auth/me/`
+  - `POST /api/auth/logout/`
 - 게임 시작 서비스
   - 참가자별 `GameChain` 생성
   - 참가자별 첫 문장용 `GameTurn` 생성
@@ -101,26 +113,17 @@ DrawBuddy는 Discord 로그인 또는 게스트 닉네임으로 방에 참가하
 - 방 조회 API 연결
 - 로비/방 화면 디자인 적용
 
-### 2.2 추가 구현 필요
+### 2.2 추가 구현 필요 (향후 계획)
 
-- Discord 로그인 API
-- 갈틱폰식 릴레이 Serializer/API
-- 게임 진행용 API
-  - 첫 문장 제출
-  - 그림 제출 완료
-  - 그림 보고 문장 제출
-  - 결과 조회
-  - 리플레이 조회
 - Django Channels / WebSocket
 - 로비 채팅 WebSocket
 - 결과 채팅 WebSocket
 - 그림 선 이벤트 저장 WebSocket
 - 결과 공개 화면
-- 실제 Canvas 그림 화면
 
 ## 3. 현재 데이터 모델
 
-### DiscordUser 추가 필요
+### DiscordUser (현재 구현됨)
 
 Discord OAuth 로그인 사용자를 저장하는 모델입니다. Discord Activity는 구현하지 않습니다.
 
@@ -302,10 +305,10 @@ A의 첫 문장
 | Method | Endpoint | 현재 상태 | 설명 |
 | --- | --- | --- | --- |
 | `GET` | `/api/` | 현재 구현됨 | smoke 응답 |
-| `GET` | `/api/auth/me/` | 추가 구현 필요 | 현재 로그인 사용자 조회 |
-| `GET` | `/api/auth/discord/login/` | 추가 구현 필요 | Discord OAuth 시작 |
-| `GET` | `/api/auth/discord/callback/` | 추가 구현 필요 | Discord OAuth callback |
-| `POST` | `/api/auth/logout/` | 추가 구현 필요 | 로그아웃 |
+| `GET` | `/api/auth/me/` | 현재 구현됨 | 현재 로그인 사용자 조회 |
+| `GET` | `/api/auth/discord/login/` | 현재 구현됨 | Discord OAuth 시작 |
+| `GET` | `/api/auth/discord/callback/` | 현재 구현됨 | Discord OAuth callback |
+| `POST` | `/api/auth/logout/` | 현재 구현됨 | 로그아웃 |
 | `POST` | `/api/rooms/` | 현재 구현됨 | 방 생성 + 방장 참가 |
 | `GET` | `/api/rooms/{room_code}/` | 현재 구현됨 | 방 정보 조회 |
 | `POST` | `/api/rooms/{room_code}/join/` | 현재 구현됨 | 방 코드 참가 |
@@ -315,11 +318,12 @@ A의 첫 문장
 | `POST` | `/api/rooms/{room_code}/players/{player_id}/kick/` | 현재 구현됨 | 방장이 참가자 내보내기 |
 | `POST` | `/api/rooms/{room_code}/start/` | 현재 구현됨 | 게임 시작 및 릴레이 체인 생성 |
 | `GET` | `/api/games/{game_id}/state/` | 현재 구현됨 | 현재 플레이어의 진행 상태 조회 |
-| `POST` | `/api/games/{game_id}/turns/{turn_id}/prompt/` | 추가 구현 필요 | 첫 문장 제출 |
-| `POST` | `/api/games/{game_id}/turns/{turn_id}/guess/` | 추가 구현 필요 | 그림 설명 문장 제출 |
-| `POST` | `/api/games/{game_id}/turns/{turn_id}/drawing/complete/` | 추가 구현 필요 | 그림 제출 완료 |
-| `GET` | `/api/games/{game_id}/results/` | 추가 구현 필요 | 결과 앨범 조회, 작성자 공개 |
-| `GET` | `/api/replays/{replay_id}/` | 추가 구현 필요 | 그림 리플레이 이벤트 조회 |
+| `POST` | `/api/games/{game_id}/turns/{turn_id}/prompt/` | 현재 구현됨 | 첫 문장 제출 |
+| `GET` | `/api/health/` | 현재 구현됨 | 시스템 헬스체크 조회 |
+| `POST` | `/api/games/{game_id}/turns/{turn_id}/guess/` | 현재 구현됨 | 그림 설명 문장 제출 |
+| `POST` | `/api/games/{game_id}/turns/{turn_id}/drawing/complete/` | 현재 구현됨 | 그림 제출 완료 |
+| `GET` | `/api/games/{game_id}/results/` | 현재 구현됨 | 결과 앨범 조회, 작성자 공개 |
+| `GET` | `/api/replays/{replay_id}/` | 현재 구현됨 | 그림 리플레이 이벤트 조회 |
 
 ## 5. 현재 구현 API 상세
 
@@ -633,7 +637,7 @@ Method: `GET`
 
 Endpoint: `/api/auth/me/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 기능:
 
@@ -673,7 +677,7 @@ Method: `GET`
 
 Endpoint: `/api/auth/discord/login/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 기능:
 
@@ -713,7 +717,7 @@ Method: `GET`
 
 Endpoint: `/api/auth/discord/callback/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 기능:
 
@@ -753,7 +757,7 @@ Method: `POST`
 
 Endpoint: `/api/auth/logout/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 기능:
 
@@ -867,7 +871,7 @@ Method: `POST`
 
 Endpoint: `/api/games/{game_id}/turns/{turn_id}/prompt/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 Request body:
 
@@ -897,7 +901,7 @@ Method: `POST`
 
 Endpoint: `/api/games/{game_id}/turns/{turn_id}/drawing/complete/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 기능:
 
@@ -933,7 +937,7 @@ Method: `POST`
 
 Endpoint: `/api/games/{game_id}/turns/{turn_id}/guess/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 Request body:
 
@@ -963,7 +967,7 @@ Method: `GET`
 
 Endpoint: `/api/games/{game_id}/results/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 기능:
 
@@ -1015,7 +1019,7 @@ Method: `GET`
 
 Endpoint: `/api/replays/{replay_id}/`
 
-현재 상태: 추가 구현 필요
+현재 상태: 구현됨
 
 Success response:
 
@@ -1308,7 +1312,7 @@ GET /api/games/{game_id}/results/
 
 ## 11. MVP 구현 우선순위
 
-Room/로비 기본 API, 게임 시작 API, 현재 게임 상태 조회 API까지 구현되었습니다. 이제 첫 문장 제출과 후속 턴 생성을 구현합니다.
+Room/로비 API, 게임 시작 API, 현재 게임 상태 조회 API 및 **첫 문장 제출 API**까지 구현 완료되었습니다.
 
 완료:
 
@@ -1319,28 +1323,23 @@ Room/로비 기본 API, 게임 시작 API, 현재 게임 상태 조회 API까지
 - 시작 시 `GameSession`, 참가자별 `GameChain`, 첫 문장용 `GameTurn` 생성
 - `DEFAULT_PROMPTS`에서 참가자별 랜덤 기본 문장을 중복 없이 배정
 - `GET /api/games/{game_id}/state/`
+- `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
+- 모든 참가자의 턴 제출 완료 여부 검사 로직 (`turn_manager.py`)
+- 후속 턴 배정 서비스 함수 구현 (백트래킹 알고리즘을 활용하여 이전 체인과 겹치지 않게 랜덤으로 릴레이 배정)
+- 제출 완료 시 첫 그림 턴 자동 생성
+- 그림 턴의 `state` 응답에 작성자 없는 `source.text`(이전 문장) 추가
+- `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/` (그림 제출 완료 API)
+- `POST /api/games/{game_id}/turns/{turn_id}/guess/` (그림 설명 제출 API)
+- Guess 턴의 `state` 응답에 `source_replay_id`(이전 그림 식별자) 추가
+- `GET /api/replays/{replay_id}/` (리플레이 조회)
+- `GET /api/games/{game_id}/results/` (게임 결과 앨범 조회)
+- Discord 로그인 API (`/api/auth/me/`, `/api/auth/logout/`)
+- `GET /api/health/`
 
 다음 작업:
 
-1. `POST /api/games/{game_id}/turns/{turn_id}/prompt/`
-   - 본인 턴인지 검사
-   - `kind == "prompt"`인지 검사
-   - 중복 제출 방지
-   - 사용자가 입력한 문장으로 기본 문장 덮어쓰기
-   - `submitted_at` 저장
-2. 모든 참가자의 첫 문장 제출 완료 여부 검사
-3. 후속 턴 배정 서비스 함수 구현
-   - 참가자 순서 고정 또는 셔플
-   - `turn_number`별 담당 플레이어 계산
-   - 진행 중 작성자 익명 보장
-4. 첫 그림 턴 생성
-5. 그림 턴의 `state` 응답에 작성자 없는 `source.text` 추가
-6. `POST /api/games/{game_id}/turns/{turn_id}/guess/`
-7. `POST /api/games/{game_id}/turns/{turn_id}/drawing/complete/`
-8. `GET /api/games/{game_id}/results/`
-9. `GET /api/replays/{replay_id}/`
-10. Discord 로그인 API 추가
-11. WebSocket 채팅/그림 이벤트 저장
+1. 프론트엔드 연동 작업
+2. WebSocket 채팅/그림 이벤트 저장
 
 ## 12. 공통 오류 응답
 

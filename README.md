@@ -2,7 +2,7 @@
 
 DrawBuddy는 갈틱폰 스타일의 웹 기반 글/그림 릴레이 게임입니다. 사용자는 닉네임으로 방을 만들거나 방 코드로 참가하고, 게임이 시작되면 문장과 그림을 번갈아 이어 갑니다. 모든 릴레이가 끝난 뒤에는 작성자와 그림 과정을 결과 화면에서 공개할 예정입니다.
 
-현재는 **로비 REST API**, **게임 시작 API**, **현재 게임 상태 조회 API**, **React 로비 UI**까지 구현되어 있습니다. 실시간 그림 전송과 채팅은 Django Channels 도입 후 추가할 예정입니다.
+현재는 **게임 진행 전체 REST API**, **React 화면 UI 마이그레이션**까지 모두 구현되어 있습니다. 현재 프론트엔드 API 연동 작업 중이며, 실시간 그림 전송과 채팅은 Django Channels 도입 후 추가할 예정입니다.
 
 ### 게임 대기실
 
@@ -166,6 +166,14 @@ kill <PID>
 | `POST`  | `/api/rooms/{room_code}/players/{player_id}/kick/` | 방장이 선택한 참가자 내보내기  |
 | `POST`  | `/api/rooms/{room_code}/start/`                    | 게임 시작             |
 | `GET`   | `/api/games/{game_id}/state/`                      | 현재 참가자의 게임 턴 조회   |
+| `POST`  | `/api/games/{game_id}/turns/{turn_id}/prompt/`     | 첫 문장 제출 완료 처리       |
+| `POST`  | `/api/games/{game_id}/turns/{turn_id}/drawing/complete/` | 그림 제출 완료 처리       |
+| `POST`  | `/api/games/{game_id}/turns/{turn_id}/guess/`      | 그림 설명(Guess) 제출 완료 처리|
+| `GET`   | `/api/games/{game_id}/results/`                    | 게임 종료 후 전체 결과 조회 |
+| `GET`   | `/api/replays/{replay_id}/`                        | 그림 리플레이 좌표 데이터 조회 |
+| `GET`   | `/api/auth/me/`                                    | 현재 접속 중인 세션 유저 정보 조회 |
+| `POST`  | `/api/auth/logout/`                                | 세션 만료 및 로그아웃 |
+| `GET`   | `/api/health/`                                     | 백엔드 서버 헬스체크        |
 
 
 게임 시작 시 서버는 다음 작업을 수행합니다.
@@ -175,6 +183,7 @@ kill <PID>
 - 참가자별 `GameChain` 생성
 - 참가자별 첫 문장용 `GameTurn` 생성
 - 기본 문장 목록에서 참가자 수만큼 문장을 중복 없이 랜덤 배정
+- 모든 참가자가 턴을 제출하면 백트래킹 알고리즘을 통해 겹치지 않는 체인으로 다음 턴(그림) 무작위 배정
 
 ### Frontend
 
@@ -185,6 +194,7 @@ kill <PID>
 - 방 정보 조회
 - 초대 링크 복사
 - 로비 화면 렌더링
+- 게임 진행 화면(대기실, 프롬프트, 드로잉, 예측, 결과, 리플레이) UI 마이그레이션 완료
 
 아직 프론트 연결이 필요한 기능:
 
@@ -193,7 +203,7 @@ kill <PID>
 - 방 나가기
 - 참가자 내보내기
 - 게임 시작
-- 실제 플레이 화면
+- 실제 플레이 화면 API Fetch 연동
 
 ## 주요 데이터 모델
 
@@ -229,31 +239,12 @@ npm run build
 
 ## 다음 작업
 
-가장 가까운 다음 구현 대상:
+가장 가까운 다음 구현 대상: 프론트엔드 API 연동 및 WebSocket 연결
 
-```http
-POST /api/games/{game_id}/turns/{turn_id}/prompt/
-```
+진행 순서:
 
-구현할 동작:
-
-1. 현재 session 참가자가 해당 턴의 담당자인지 확인
-2. `kind == "prompt"`인지 확인
-3. 이미 제출한 턴인지 확인
-4. 사용자가 입력한 문장으로 기본 문장 덮어쓰기
-5. `submitted_at` 저장
-6. 모든 참가자가 제출했는지 확인
-7. 모두 제출했다면 첫 그림 턴 생성
-
-이후 순서:
-
-1. 그림 제출 완료 API
-2. 그림 설명 제출 API
-3. 후속 턴 배정
-4. 결과 조회 API
-5. 리플레이 조회 API
-6. Django Channels 및 WebSocket
-7. Discord OAuth 로그인
+1. 실제 플레이 화면 (프롬프트, 드로잉, 예측, 결과, 리플레이) API Fetch 연동 완료
+2. Django Channels 기반의 WebSocket 도입 (로비 채팅, 인게임 선 긋기 데이터 및 채팅)
 
 ## 운영 전 확인 사항
 

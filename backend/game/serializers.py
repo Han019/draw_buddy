@@ -1,6 +1,7 @@
+from dataclasses import field
 from rest_framework import serializers
 
-from .models import Room, RoomPlayer
+from .models import Room, RoomPlayer, DrawingReplay, DiscordUser
 
 
 class RoomPlayerSerializer(serializers.ModelSerializer):
@@ -93,3 +94,37 @@ class PromptSubmitSerializer(serializers.Serializer):
         allow_blank=True,
         
     )
+
+class DrawingCompleteSerializer(serializers.Serializer):
+    canvas_width = serializers.IntegerField(default = 800)
+    canvas_height = serializers.IntegerField(default = 600)
+    events = serializers.ListField(
+        child = serializers.DictField(),
+        allow_empty=True,
+        default= list
+    )
+
+class GuessSubmitSerializer(serializers.Serializer):
+    text = serializers.CharField(
+        max_length= 200,
+        allow_blank = True,
+    )
+
+class DrawingReplaySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DrawingReplay
+        fields = ['id', 'canvas_width', 'canvas_height', 'events']
+    
+class DiscordUserSerializer(serializers.ModelSerializer):
+    provider = serializers.SerializerMethodField()
+
+    class Meta:
+        model = DiscordUser
+        fields = ['id','provider','discord_id','username','global_name','avatar_url']
+    
+    def get_provider(self,obj):
+        return 'discord'
+
+class AuthMeResponseSerializer(serializers.Serializer):
+    user = DiscordUserSerializer(allow_null=True)
+    

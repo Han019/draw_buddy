@@ -27,16 +27,28 @@ type JoinRoomRequest = {
   nickname: string;
 };
 
+export function getCsrfToken() {
+  const match = document.cookie.match(new RegExp("(^| )csrftoken=([^;]+)"));
+  return match ? decodeURIComponent(match[2]) : "";
+}
+
 async function requestJson<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(init?.headers as Record<string, string> ?? {}),
+  };
+
+  const method = init?.method?.toUpperCase() || "GET";
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    headers["X-CSRFToken"] = getCsrfToken();
+  }
+
   const response = await fetch(path, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
+    headers,
   });
 
   if (!response.ok) {
