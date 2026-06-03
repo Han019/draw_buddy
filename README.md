@@ -1,7 +1,7 @@
 # DrawBuddy 🎨✍️
 
 <p align="center">
-  <img src="./images/main.png" alt="DrawBuddy 메인" width="800"/>
+  <img src="./docs/images/main.png" alt="DrawBuddy 메인" width="800"/>
 </p>
 
 **DrawBuddy**는 친구들과 함께 즐길 수 있는 **갈틱폰(Gartic Phone) 스타일의 실시간 글/그림 릴레이 웹 게임**입니다. 
@@ -12,7 +12,7 @@
 ---
 
 <p align="center">
-  <img src="./images/room.png" alt="DrawBuddy 대기실" width="800"/>
+  <img src="./docs/images/room.png" alt="DrawBuddy 대기실" width="800"/>
 </p>
 
 ---
