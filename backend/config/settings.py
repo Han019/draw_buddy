@@ -12,7 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
-# import dj_database_url
+import dj_database_url
 from dotenv import load_dotenv
 
 # 로컬 환경을 위해 .env 파일 로드
