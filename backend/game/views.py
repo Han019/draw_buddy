@@ -84,12 +84,14 @@ class DiscordCallbackAPIView(APIView):
         description = "디스코드에서 돌아오는 코드를 받아 유저 정보를 저장",
     )
     def get(self,request):
+        frontend_url = os.environ.get("FRONTEND_BASE_URL", "http://127.0.0.1:5173")
+        error = request.GET.get("error")
         code = request.GET.get("code")
-        if not code:
-            return Response(
-                {'detail': "받은 코드 없음"},
-                status = status.HTTP_400_BAD_REQUEST
-            )
+
+        # 사용자가 로그인을 취소(access_denied)하거나 코드가 없는 경우 프론트엔드 메인 화면으로 리다이렉트
+        if error or not code:
+            return HttpResponseRedirect(frontend_url)
+
         client_id = os.environ.get("DISCORD_CLIENT_ID")
         client_secret = os.environ.get("DISCORD_CLIENT_SECRET")
         redirect_uri = os.environ.get("DISCORD_REDIRECT_URI")
@@ -120,10 +122,7 @@ class DiscordCallbackAPIView(APIView):
         token_response = r.json()
         access_token = token_response.get("access_token")
         if not access_token:
-            return Response(
-                {'detail':'토큰을 발급받지 못했습니다.'},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return HttpResponseRedirect(f"{frontend_url}/?error=token_failed")
         user_res = requests.get("https://discord.com/api/v10/users/@me",headers={'Authorization':f"Bearer {access_token}"})
         user_res.raise_for_status()
 
@@ -148,7 +147,6 @@ class DiscordCallbackAPIView(APIView):
         request.session['discord_user_id'] = discord_user.discord_id
 
         #frontend로 돌려보내기
-        frontend_url = os.environ.get("FRONTEND_BASE_URL", "http://127.0.0.1:5173")
         return HttpResponseRedirect(frontend_url)
 
 class AuthMeAPIView(APIView):
@@ -206,10 +204,16 @@ class RoomCreateAPIView(APIView):
             max_players = max_players,
         )
 
+        discord_user_id = request.session.get('discord_user_id')
+        discord_user = None
+        if discord_user_id:
+            discord_user = DiscordUser.objects.filter(discord_id=discord_user_id).first()
+
         player = RoomPlayer.objects.create(
             room = room,
             nickname = nickname,
-            is_host = True
+            is_host = True,
+            discord_user = discord_user
         )
 
         bind_room_player(request=request, player=player)
@@ -275,10 +279,16 @@ class RoomJoinAPIView(APIView):
                 status = status.HTTP_409_CONFLICT,
             )
         
+        discord_user_id = request.session.get('discord_user_id')
+        discord_user = None
+        if discord_user_id:
+            discord_user = DiscordUser.objects.filter(discord_id=discord_user_id).first()
+
         player = RoomPlayer.objects.create(
             room = room,
             nickname = nickname,
             is_host = False,
+            discord_user = discord_user
         )
         bind_room_player(request=request, player=player)
 
@@ -333,7 +343,9 @@ class RoomSettingsAPIView(APIView):
                 {"detail":"방장만 설정을 변경할 수 있습니다."},
                 status = status.HTTP_403_FORBIDDEN,
             )
-        if room.status != RoomStatus.WAITING:
+        
+        is_resetting = request.data.get('status') == 'waiting'
+        if not is_resetting and room.status != RoomStatus.WAITING:
             return Response(
                 {"detail":"대기 중인 방에서만 설정을 변경할 수 있습니다."},
                 status = status.HTTP_409_CONFLICT,
@@ -345,6 +357,9 @@ class RoomSettingsAPIView(APIView):
         for field, value in serializer.validated_data.items():
             setattr(room, field, value)
         
+        if is_resetting:
+            room.players.update(is_ready=False)
+
         room.save()
         return Response( RoomSerializer(room).data)
 
@@ -529,6 +544,7 @@ class GameStateAPIView(APIView):
                 'text' : turn.text,
                 'source_text' : source_text,
                 'source_replay_id': source_replay_id,
+                'is_submitted': bool(turn.submitted_at),
             }
         serializer = GameStateResponseSerializer(
             {
@@ -587,6 +603,25 @@ class PromptSubmitAPIView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+    @extend_schema(summary="첫 문장 제출 취소")
+    @transaction.atomic
+    def delete(self, request, game_id, turn_id):
+        game_session = get_object_or_404(GameSession, id=game_id)
+        player = get_current_room_player(request, game_session.room)
+
+        turn = get_object_or_404(
+            GameTurn,
+            id=turn_id,
+            game_session=game_session,
+            player=player,
+            kind=GameTurn.Kind.PROMPT,
+            turn_number=game_session.current_turn_number
+        )
+        turn.submitted_at = None
+        turn.save(update_fields=['submitted_at'])
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 class ReplayRetrieveAPIView(APIView):
     @extend_schema(
@@ -689,6 +724,26 @@ class DrawingCompleteAPIView(APIView):
             status = status.HTTP_200_OK
         )
 
+    @extend_schema(summary="그림 제출 취소")
+    @transaction.atomic
+    def delete(self, request, game_id, turn_id):
+        game_session = get_object_or_404(GameSession, id=game_id)
+        player = get_current_room_player(request, game_session.room)
+
+        turn = get_object_or_404(
+            GameTurn,
+            id=turn_id,
+            game_session=game_session,
+            player=player,
+            kind=GameTurn.Kind.DRAWING,
+            turn_number=game_session.current_turn_number
+        )
+        turn.submitted_at = None
+        turn.save(update_fields=['submitted_at'])
+        DrawingReplay.objects.filter(game_turn=turn).delete()
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 #그림 설명
 class GuessSubmitAPIView(APIView):
     @extend_schema(
@@ -705,7 +760,7 @@ class GuessSubmitAPIView(APIView):
 
         turn = get_object_or_404(
             GameTurn,
-            id= turn.id,
+            id= turn_id,
             game_session = game_session,
             player = player,
             kind = GameTurn.Kind.GUESS,
@@ -734,3 +789,22 @@ class GuessSubmitAPIView(APIView):
             },
             status=status.HTTP_200_OK
         )
+
+    @extend_schema(summary="그림 설명 제출 취소")
+    @transaction.atomic
+    def delete(self, request, game_id, turn_id):
+        game_session = get_object_or_404(GameSession, id=game_id)
+        player = get_current_room_player(request, game_session.room)
+
+        turn = get_object_or_404(
+            GameTurn,
+            id=turn_id,
+            game_session=game_session,
+            player=player,
+            kind=GameTurn.Kind.GUESS,
+            turn_number=game_session.current_turn_number
+        )
+        turn.submitted_at = None
+        turn.save(update_fields=['submitted_at'])
+
+        return Response(status=status.HTTP_204_NO_CONTENT)

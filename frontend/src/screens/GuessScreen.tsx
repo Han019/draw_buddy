@@ -13,12 +13,16 @@ export type StrokePoint = {
 interface GuessScreenProps {
   onNext: (guess: string) => void;
   userStrokes: StrokePoint[];
+  timeLimit?: number;
+  isSubmitted?: boolean;
+  onCancel?: () => void;
 }
 
-export default function GuessScreen({ onNext, userStrokes }: GuessScreenProps) {
+export default function GuessScreen({ onNext, userStrokes, timeLimit = 30, isSubmitted = false, onCancel }: GuessScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [guess, setGuess] = useState("");
-  const [timeLeft, setTimeLeft] = useState(30);
+  const [timeLeft, setTimeLeft] = useState(timeLimit);
+  const autoSubmitRef = useRef(false);
 
   // 타이머 로직
   useEffect(() => {
@@ -33,6 +37,17 @@ export default function GuessScreen({ onNext, userStrokes }: GuessScreenProps) {
     }, 1000);
     return () => clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    if (timeLeft === 0 && !isSubmitted && !autoSubmitRef.current) {
+      autoSubmitRef.current = true;
+      onNext(guess || "알 수 없는 작품");
+    }
+  }, [timeLeft, isSubmitted, guess, onNext]);
+
+  useEffect(() => {
+    if (!isSubmitted) autoSubmitRef.current = false;
+  }, [isSubmitted]);
 
   // 이전 그림(userStrokes) 렌더링 로직
   useEffect(() => {
@@ -68,8 +83,14 @@ export default function GuessScreen({ onNext, userStrokes }: GuessScreenProps) {
   }, [userStrokes]);
 
   const handleSubmit = () => {
-    onNext(guess || "우주 정복하는 고양이 캡틴");
+    if (isSubmitted) {
+      onCancel?.();
+    } else {
+      onNext(guess || "우주 정복하는 고양이 캡틴");
+    }
   };
+
+  const isTimeOut = timeLeft === 0;
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-surface-lowest font-sans text-ink">
@@ -130,7 +151,8 @@ export default function GuessScreen({ onNext, userStrokes }: GuessScreenProps) {
                 placeholder="그림을 보고 연상되는 문장을 입력하세요..." 
                 rows={2}
                 value={guess}
-                className="h-full min-h-[80px] w-full resize-none rounded-lg border-[3px] border-ink bg-surface-lowest p-4 font-body text-lg font-bold text-ink outline-none focus:border-primary md:text-xl"
+                disabled={isSubmitted || isTimeOut}
+                className={`h-full min-h-[80px] w-full resize-none rounded-lg border-[3px] border-ink bg-surface-lowest p-4 font-body text-lg font-bold text-ink outline-none focus:border-primary md:text-xl ${isSubmitted || isTimeOut ? 'opacity-60 cursor-not-allowed' : ''}`}
               />
               <div className="absolute bottom-3 right-3 flex items-center gap-2">
                 <span className={`rounded border-[2px] border-ink px-2 py-1 font-mono text-[10px] font-bold md:text-xs ${
@@ -143,11 +165,12 @@ export default function GuessScreen({ onNext, userStrokes }: GuessScreenProps) {
 
             <button 
               onClick={handleSubmit}
-              className="neo-button flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl bg-primary px-8 py-4 text-xl font-black text-white md:w-auto"
+              disabled={isTimeOut}
+              className={`neo-button flex shrink-0 cursor-pointer items-center justify-center gap-2 rounded-xl px-8 py-4 text-xl font-black text-white md:w-auto ${isTimeOut ? 'bg-surface-container-highest text-on-surface-variant cursor-not-allowed' : isSubmitted ? 'bg-error-container text-on-error-container' : 'bg-primary'}`}
               type="button"
             >
-              <span>제출하기</span>
-              <Send className="h-5 w-5 text-white md:h-6 md:w-6" />
+              <span>{isTimeOut ? "시간 초과" : isSubmitted ? "제출 취소" : "제출하기"}</span>
+              {!isSubmitted && !isTimeOut && <Send className="h-5 w-5 text-current md:h-6 md:w-6" />}
             </button>
           </div>
         </div>

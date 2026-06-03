@@ -5,6 +5,8 @@ from .models import Room, RoomPlayer, DrawingReplay, DiscordUser
 
 
 class RoomPlayerSerializer(serializers.ModelSerializer):
+    avatar_url = serializers.SerializerMethodField()
+
     class Meta:
         model = RoomPlayer
         fields = [
@@ -14,11 +16,18 @@ class RoomPlayerSerializer(serializers.ModelSerializer):
             "is_ready",
             "score",
             "joined_at",
+            "avatar_url",
         ]
+
+    def get_avatar_url(self, obj):
+        if hasattr(obj, 'discord_user') and obj.discord_user:
+            return obj.discord_user.avatar_url
+        return None
 
 
 class RoomSerializer(serializers.ModelSerializer):
     players = RoomPlayerSerializer(many=True, read_only=True)
+    current_game_id = serializers.SerializerMethodField()
 
     class Meta:
         model = Room
@@ -32,7 +41,14 @@ class RoomSerializer(serializers.ModelSerializer):
             'draw_time',
             'write_time',
             'updated_at',
+            'current_game_id',
         ]
+
+    def get_current_game_id(self, obj):
+        if obj.status == 'waiting':
+            return None
+        latest_game = obj.games.order_by('-id').first()
+        return latest_game.id if latest_game else None
 
 
 class RoomCreateRequestSerializer(serializers.Serializer):
@@ -51,6 +67,7 @@ class ReadyUpdateSerializer(serializers.Serializer):
     is_ready = serializers.BooleanField()
 
 class RoomSettingsUpdateSerializer(serializers.Serializer):
+    status = serializers.ChoiceField(choices=[('waiting', 'waiting')], required=False)
 
     draw_time = serializers.IntegerField(
         min_value = 60,
@@ -59,7 +76,7 @@ class RoomSettingsUpdateSerializer(serializers.Serializer):
     )
     write_time = serializers.IntegerField(
         min_value = 20,
-        max_value = 60,
+        max_value = 300,
         required = False,
     )
 

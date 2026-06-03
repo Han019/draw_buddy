@@ -32,7 +32,7 @@
 | `GET` | `/api/auth/me/` | 현재 로그인 중인 사용자 프로필 조회 |
 | `POST` | `/api/auth/logout/` | 로그아웃 처리 |
 
-### 2.2 방(Room) & 로비 관련 (연동 진행)
+### 2.2 방(Room) & 로비 관련 (프론트 연동 완료)
 | Method | Endpoint | 기능 설명 |
 | --- | --- | --- |
 | `POST` | `/api/rooms/` | 방 생성 및 방장으로 참가 |
@@ -44,15 +44,15 @@
 | `POST` | `/api/rooms/{room_code}/players/{player_id}/kick/` | 참가자 강퇴 (방장 전용) |
 | `POST` | `/api/rooms/{room_code}/start/` | 릴레이 게임 시작 및 체인 생성 (방장 전용) |
 
-### 2.3 게임 진행 관련 (조회 연동 진행)
+### 2.3 게임 진행 관련 (프론트 연동 완료)
 | Method | Endpoint | 기능 설명 |
 | --- | --- | --- |
 | `GET` | `/api/games/{game_id}/state/` | 현재 본인의 턴 상태(그려야 할지, 써야 할지) 조회 |
-| `POST` | `/api/games/{game_id}/turns/{turn_id}/prompt/` | **[PromptScreen]** 첫 제시어(문장) 제출 완료 처리 (UI 마이그레이션 완료) |
-| `POST` | `/api/games/{game_id}/turns/{turn_id}/drawing/complete/`| **[DrawingScreen]** 그림(Canvas) 제출 완료 처리 (UI 마이그레이션 완료) |
-| `POST` | `/api/games/{game_id}/turns/{turn_id}/guess/` | **[GuessScreen]** 이전 그림을 보고 설명/정답 제출 처리 (UI 마이그레이션 완료) |
-| `GET` | `/api/games/{game_id}/results/` | **[ResultScreen]** 게임 종료 후, 모든 체인의 제출 앨범 및 작성자 정보 조회 (UI 마이그레이션 완료) |
-| `GET` | `/api/replays/{replay_id}/` | **[ResultScreen]** 특정 그림의 좌표 이벤트를 불러와 캔버스 리플레이 재생 (UI 마이그레이션 완료) |
+| `POST` | `/api/games/{game_id}/turns/{turn_id}/prompt/` | **[PromptScreen]** 첫 제시어(문장) 제출 완료 처리 (프론트 연동 완료) |
+| `POST` | `/api/games/{game_id}/turns/{turn_id}/drawing/complete/`| **[DrawingScreen]** 그림(Canvas) 제출 완료 처리 (프론트 연동 완료) |
+| `POST` | `/api/games/{game_id}/turns/{turn_id}/guess/` | **[GuessScreen]** 이전 그림을 보고 설명/정답 제출 처리 (프론트 연동 완료) |
+| `GET` | `/api/games/{game_id}/results/` | **[ResultScreen]** 게임 종료 후, 모든 체인의 제출 앨범 및 작성자 정보 조회 (프론트 연동 완료) |
+| `GET` | `/api/replays/{replay_id}/` | **[ResultScreen]** 특정 그림의 좌표 이벤트를 불러와 캔버스 리플레이 재생 (프론트 연동 완료) |
 
 ---
 
@@ -64,5 +64,7 @@ REST API의 개발은 완료되었습니다. 향후 추가할 실시간 기능 �
 | 프로토콜 | Endpoint | 기능 설명 |
 | --- | --- | --- |
 | `WS` | `/ws/rooms/{room_code}/` | 로비 실시간 채팅, 플레이어 입장/퇴장, 상태 동기화 |
+| **진행 상태** | - | **구현 완료 및 프론트 연동 완료 (`RoomScreen.tsx`)** |
 | `WS` | `/ws/games/{game_id}/` | 그림 그리기 실시간 이벤트 좌표 전송 및 턴 종료 알림 |
 | `WS` | `/ws/games/{game_id}/results/` | 결과 화면 실시간 채팅 및 리플레이 공개 단계 동기화 |
+| **진행 상태** | - | **구현 완료 및 프론트 연동 완료 (`ResultScreen.tsx`에서 로비 채널 재활용 처리)** |

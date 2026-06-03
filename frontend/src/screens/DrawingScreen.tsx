@@ -1,14 +1,18 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Undo2, Redo2, Trash2, Eraser, Send, Timer } from 'lucide-react';
+import { Undo2, Redo2, Trash2, Eraser, Send, Timer, X, Users } from 'lucide-react';
 import { StrokePoint } from '../types';
 
 interface DrawingScreenProps {
   prompt: string;
   drawTime: number;
   onFinished: (drawnStrokes: StrokePoint[]) => void;
+  onCancel: () => void;
+  isSubmitted?: boolean;
+  submittedCount?: number;
+  totalPlayers?: number;
 }
 
-export default function DrawingScreen({ prompt, drawTime, onFinished }: DrawingScreenProps) {
+export default function DrawingScreen({ prompt, drawTime, onFinished, onCancel, isSubmitted = false, submittedCount, totalPlayers }: DrawingScreenProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -20,6 +24,7 @@ export default function DrawingScreen({ prompt, drawTime, onFinished }: DrawingS
   const [strokeHistory, setStrokeHistory] = useState<StrokePoint[]>([]);
   const [redoStack, setRedoStack] = useState<StrokePoint[]>([]);
   const isDrawingRef = useRef(false);
+  const autoSubmitRef = useRef(false);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -35,48 +40,55 @@ export default function DrawingScreen({ prompt, drawTime, onFinished }: DrawingS
   }, []);
 
   useEffect(() => {
+    if (timeLeft === 0 && !isSubmitted && !autoSubmitRef.current) {
+      autoSubmitRef.current = true;
+      onFinished(strokeHistory);
+    }
+  }, [timeLeft, isSubmitted, strokeHistory, onFinished]);
+
+  useEffect(() => {
+    if (!isSubmitted) autoSubmitRef.current = false;
+  }, [isSubmitted]);
+
+  useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const resizeCanvas = () => {
+    const drawAll = () => {
       const rect = canvas.parentElement?.getBoundingClientRect();
       if (rect) {
-        canvas.width = rect.width;
-        canvas.height = rect.height;
-        redrawCanvas();
+        // 브라우저 크기가 바뀌었을 때만 캔버스를 초기화합니다. (매 프레임 리셋 방지!)
+        if (canvas.width !== rect.width || canvas.height !== rect.height) {
+          canvas.width = rect.width;
+          canvas.height = rect.height;
+        }
       }
+
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      strokeHistory.forEach((pt) => {
+        if (pt.type === 'start') {
+          ctx.beginPath();
+          ctx.strokeStyle = pt.color;
+          ctx.lineWidth = pt.width;
+          ctx.moveTo(pt.x * canvas.width, pt.y * canvas.height);
+        } else if (pt.type === 'draw') {
+          ctx.lineTo(pt.x * canvas.width, pt.y * canvas.height);
+          ctx.stroke();
+        } else if (pt.type === 'end') {
+          ctx.stroke();
+          ctx.beginPath();
+        }
+      });
     };
 
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
+    drawAll();
+    window.addEventListener('resize', drawAll);
+    return () => window.removeEventListener('resize', drawAll);
   }, [strokeHistory]);
-
-  const redrawCanvas = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    strokeHistory.forEach((pt) => {
-      if (pt.type === 'start') {
-        ctx.beginPath();
-        ctx.strokeStyle = pt.color;
-        ctx.lineWidth = pt.width;
-        ctx.moveTo(pt.x * canvas.width, pt.y * canvas.height);
-      } else if (pt.type === 'draw') {
-        ctx.lineTo(pt.x * canvas.width, pt.y * canvas.height);
-        ctx.stroke();
-      } else if (pt.type === 'end') {
-        ctx.stroke();
-        ctx.beginPath();
-      }
-    });
-  };
 
   const drawPoint = (x: number, y: number, type: 'start' | 'draw' | 'end') => {
     const canvas = canvasRef.current;
@@ -90,6 +102,7 @@ export default function DrawingScreen({ prompt, drawTime, onFinished }: DrawingS
   };
 
   const handleStart = (clientX: number, clientY: number) => {
+    if (isSubmitted) return;
     isDrawingRef.current = true;
     const pt = drawPoint(clientX, clientY, 'start');
     if (pt) {
@@ -143,6 +156,8 @@ export default function DrawingScreen({ prompt, drawTime, onFinished }: DrawingS
     }
   };
 
+  const isTimeOut = timeLeft === 0;
+
   return (
     <div className="h-screen w-full bg-[#fbf8fc] flex flex-col font-sans text-[#1b1b1e] overflow-hidden">
       <main className="flex-1 px-2 md:px-6 py-2 md:py-6 max-w-7xl mx-auto w-full flex flex-col min-h-0 min-w-0">
@@ -153,13 +168,19 @@ export default function DrawingScreen({ prompt, drawTime, onFinished }: DrawingS
               그려주세요: <span className="text-[#630ed4] underline decoration-2 md:decoration-4 underline-offset-4">{prompt}</span>
             </h2>
           </div>
+        {totalPlayers !== undefined && (
+          <div className="bg-white border-[2px] md:border-[3px] border-[#1b1b1e] p-2 md:p-3 neo-brutal-shadow flex items-center gap-2 md:gap-3 rounded-xl font-mono shrink-0 text-[#1b1b1e]">
+            <Users className="w-5 h-5 md:w-6 md:h-6 shrink-0" />
+            <span className="text-xl md:text-2xl font-bold">{submittedCount ?? "?"} / {totalPlayers}</span>
+          </div>
+        )}
           <div className="bg-[#fed01a] border-[2px] md:border-[3px] border-[#1b1b1e] p-2 md:p-3 neo-brutal-shadow flex items-center gap-2 md:gap-3 rounded-xl font-mono shrink-0">
             <Timer className="w-5 h-5 md:w-6 md:h-6 shrink-0" />
             <span className="text-xl md:text-2xl font-bold">0:{timeLeft < 10 ? `0${timeLeft}` : timeLeft}</span>
           </div>
         </div>
         
-        <div ref={containerRef} className="w-full flex-1 bg-white border-[3px] border-[#1b1b1e] neo-brutal-shadow-sm md:neo-brutal-shadow-lg rounded-xl overflow-hidden relative flex items-center justify-center cursor-crosshair min-h-0" onMouseDown={(e) => handleStart(e.clientX, e.clientY)} onMouseMove={(e) => handleMove(e.clientX, e.clientY)} onMouseUp={handleEnd} onMouseLeave={handleEnd} onTouchStart={(e) => { const touch = e.touches[0]; if (touch) handleStart(touch.clientX, touch.clientY); }} onTouchMove={(e) => { const touch = e.touches[0]; if (touch) handleMove(touch.clientX, touch.clientY); }} onTouchEnd={handleEnd}>
+        <div ref={containerRef} className={`w-full flex-1 bg-white border-[3px] border-[#1b1b1e] neo-brutal-shadow-sm md:neo-brutal-shadow-lg rounded-xl overflow-hidden relative flex items-center justify-center min-h-0 ${isSubmitted || isTimeOut ? 'pointer-events-none' : 'cursor-crosshair'}`} onMouseDown={(e) => handleStart(e.clientX, e.clientY)} onMouseMove={(e) => handleMove(e.clientX, e.clientY)} onMouseUp={handleEnd} onMouseLeave={handleEnd} onTouchStart={(e) => { const touch = e.touches[0]; if (touch) handleStart(touch.clientX, touch.clientY); }} onTouchMove={(e) => { const touch = e.touches[0]; if (touch) handleMove(touch.clientX, touch.clientY); }} onTouchEnd={handleEnd}>
           {strokeHistory.length === 0 && (
             <div className="absolute inset-0 pointer-events-none opacity-5 flex items-center justify-center select-none">
               <span className="text-4xl md:text-6xl font-black rotate-12 uppercase">DRAW HERE</span>
@@ -174,7 +195,9 @@ export default function DrawingScreen({ prompt, drawTime, onFinished }: DrawingS
               {['#7c3aed', '#fed01a', '#6dfe9c', '#ba1a1a', '#1b1b1e', '#ffffff'].map((swatchColor) => (
                 <button key={swatchColor} onClick={() => { setColor(swatchColor); setIsEraser(false); }} style={{ backgroundColor: swatchColor }} className={`w-7 h-7 md:w-8 md:h-8 rounded-full border-[2px] border-[#1b1b1e] transition-transform shrink-0 ${color === swatchColor && !isEraser ? 'scale-110 ring-2 ring-[#7c3aed]' : 'hover:scale-105'}`} />
               ))}
-              <input type="color" value={color} onChange={(e) => { setColor(e.target.value); setIsEraser(false); }} className="w-7 h-7 md:w-8 md:h-8 ml-2 cursor-pointer rounded-full border-0 p-0 shadow-none hover:scale-105" />
+              <label className="relative flex items-center justify-center w-7 h-7 md:w-8 md:h-8 ml-2 cursor-pointer rounded-full border-[2px] border-[#1b1b1e] hover:scale-105 shrink-0" style={{ background: 'conic-gradient(red, yellow, lime, aqua, blue, magenta, red)' }} title="색상 선택">
+                <input type="color" value={color} onChange={(e) => { setColor(e.target.value); setIsEraser(false); }} className="absolute opacity-0 w-full h-full cursor-pointer" />
+              </label>
             </div>
             <div className="flex items-center gap-2 md:gap-3 px-4 border-r-[3px] border-[#1b1b1e] shrink-0">
               {[5, 10, 16, 24].map((width) => (
@@ -190,8 +213,9 @@ export default function DrawingScreen({ prompt, drawTime, onFinished }: DrawingS
               <button onClick={() => { setStrokeHistory([]); setRedoStack([]); }} className="p-1 md:p-2 hover:bg-red-100 rounded"><Trash2 className="w-4 h-4 md:w-5 md:h-5 text-[#ba1a1a]" /></button>
             </div>
           </div>
-          <button onClick={() => onFinished(strokeHistory)} className="w-full lg:w-auto flex items-center justify-center gap-2 md:gap-3 bg-[#6dfe9c] text-[#00210c] border-[3px] border-[#1b1b1e] px-6 py-3 md:px-10 md:py-4 neo-brutal-shadow rounded-xl btn-press font-black text-lg shrink-0 lg:ml-auto">
-            <span>완료하기</span><Send className="w-5 h-5" />
+          <button onClick={isSubmitted ? onCancel : () => onFinished(strokeHistory)} disabled={isTimeOut} className={`w-full lg:w-auto flex items-center justify-center gap-2 md:gap-3 border-[3px] border-[#1b1b1e] px-6 py-3 md:px-10 md:py-4 neo-brutal-shadow rounded-xl font-black text-lg shrink-0 lg:ml-auto transition-all ${isTimeOut ? 'bg-[#e4e1e5] text-[#4a4455] cursor-not-allowed' : isSubmitted ? 'bg-[#ffb4ab] text-[#410002] btn-press cursor-pointer' : 'bg-[#6dfe9c] text-[#00210c] btn-press cursor-pointer'}`}>
+            <span>{isTimeOut ? "시간 초과 (대기 중)" : isSubmitted ? "제출 취소" : "완료하기"}</span>
+            {!isTimeOut && (isSubmitted ? <X className="w-5 h-5" /> : <Send className="w-5 h-5" />)}
           </button>
         </div>
       </main>

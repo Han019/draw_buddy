@@ -7,6 +7,7 @@ export type RoomPlayer = {
   is_ready: boolean;
   score: number;
   joined_at: string;
+  avatar_url?: string | null;
 };
 
 export type Room = {
@@ -14,8 +15,11 @@ export type Room = {
   code: string;
   status: RoomStatus;
   max_players: number;
+  draw_time?: number;
+  write_time?: number;
   created_at: string;
   players: RoomPlayer[];
+  current_game_id?: number;
 };
 
 type CreateRoomRequest = {
@@ -49,6 +53,7 @@ async function requestJson<T>(
   const response = await fetch(path, {
     ...init,
     headers,
+    credentials: "include", // 백엔드(Django)와 세션 쿠키를 주고받기 위해 필수!
   });
 
   if (!response.ok) {
@@ -64,6 +69,11 @@ async function requestJson<T>(
     }
 
     throw new Error(message);
+  }
+
+  // 백엔드에서 데이터 없이(204 No Content) 성공 응답을 보냈을 때의 JSON 파싱 에러 방지
+  if (response.status === 204) {
+    return null as unknown as T;
   }
 
   return response.json() as Promise<T>;
@@ -88,4 +98,120 @@ export function joinRoom(
 
 export function getRoom(roomCode: string): Promise<Room> {
   return requestJson<Room>(`/api/rooms/${roomCode}/`);
+}
+
+// --- 인증 관련 API ---
+
+export function getAuthMe(): Promise<{ user: any }> {
+  return requestJson<{ user: any }>("/api/auth/me/");
+}
+
+export function logout(): Promise<{ logged_out: boolean }> {
+  return requestJson<{ logged_out: boolean }>("/api/auth/logout/", {
+    method: "POST",
+  });
+}
+
+// --- 방(대기실) 관련 액션 API ---
+
+export function updateReady(roomCode: string, isReady: boolean): Promise<Room> {
+  return requestJson<Room>(`/api/rooms/${roomCode}/ready/`, {
+    method: "PATCH",
+    body: JSON.stringify({ is_ready: isReady }),
+  });
+}
+
+export function updateRoomSettings(roomCode: string, settings: Partial<Room>): Promise<Room> {
+  return requestJson<Room>(`/api/rooms/${roomCode}/settings/`, {
+    method: "PATCH",
+    body: JSON.stringify(settings),
+  });
+}
+
+export function returnToWaitingRoom(roomCode: string): Promise<Room> {
+  return requestJson<Room>(`/api/rooms/${roomCode}/settings/`, {
+    method: "PATCH",
+    body: JSON.stringify({ status: "waiting" }),
+  });
+}
+
+export function leaveRoom(roomCode: string): Promise<void> {
+  return requestJson(`/api/rooms/${roomCode}/leave/`, {
+    method: "POST",
+  });
+}
+
+export function startGame(roomCode: string): Promise<any> {
+  return requestJson(`/api/rooms/${roomCode}/start/`, {
+    method: "POST",
+  });
+}
+
+// --- 게임 진행(In-game) 관련 API ---
+
+export type GameState = {
+  game_id: number;
+  game_status: string;
+  current_turn_number: number;
+  turn: {
+    id: number;
+    turn_number: number;
+    kind: "prompt" | "drawing" | "guess";
+    time_limit: number;
+    text: string | null;
+    source_text: string | null;
+    source_replay_id: number | null;
+    is_submitted: boolean;
+  } | null;
+};
+
+export function getGameState(gameId: number): Promise<GameState> {
+  return requestJson<GameState>(`/api/games/${gameId}/state/`);
+}
+
+export function submitPrompt(gameId: number, turnId: number, text: string): Promise<any> {
+  return requestJson(`/api/games/${gameId}/turns/${turnId}/prompt/`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function unsubmitPrompt(gameId: number, turnId: number): Promise<any> {
+  return requestJson(`/api/games/${gameId}/turns/${turnId}/prompt/`, {
+    method: "DELETE",
+  });
+}
+
+export function submitDrawing(gameId: number, turnId: number, payload: { canvas_width: number; canvas_height: number; events: any[] }): Promise<any> {
+  return requestJson(`/api/games/${gameId}/turns/${turnId}/drawing/complete/`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function unsubmitDrawing(gameId: number, turnId: number): Promise<any> {
+  return requestJson(`/api/games/${gameId}/turns/${turnId}/drawing/complete/`, {
+    method: "DELETE",
+  });
+}
+
+export function submitGuess(gameId: number, turnId: number, text: string): Promise<any> {
+  return requestJson(`/api/games/${gameId}/turns/${turnId}/guess/`, {
+    method: "POST",
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function unsubmitGuess(gameId: number, turnId: number): Promise<any> {
+  return requestJson(`/api/games/${gameId}/turns/${turnId}/guess/`, {
+    method: "DELETE",
+  });
+}
+
+export function getGameResults(gameId: number): Promise<any> {
+  return requestJson(`/api/games/${gameId}/results/`);
+}
+
+export function getReplay(replayId: number): Promise<any> {
+  return requestJson(`/api/replays/${replayId}/`);
 }

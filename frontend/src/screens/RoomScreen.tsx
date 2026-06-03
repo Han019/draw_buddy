@@ -1,4 +1,5 @@
 import {
+  Check,
   Clipboard,
   Copy,
   Crown,
@@ -11,8 +12,9 @@ import {
   Settings,
   UserPlus,
   Users,
+  X,
 } from "lucide-react";
-import { FormEvent, ReactNode, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Room, RoomPlayer } from "../api";
 
 type CopyState = "idle" | "copied" | "failed";
@@ -25,8 +27,12 @@ type RoomScreenProps = {
   onCopyInvite: () => void;
   onLeave: () => void;
   onRefresh: () => void;
+  onToggleReady: (isReady: boolean) => Promise<void> | void;
+  onStartGame: () => Promise<void> | void;
   pending: boolean;
   room: Room;
+  onUpdateSettings?: (settings: Partial<Room>) => Promise<void> | void;
+  onKickPlayer?: (playerId: number) => Promise<void> | void;
 };
 
 type LocalMessage = {
@@ -34,12 +40,7 @@ type LocalMessage = {
   author: string;
   body: string;
   own: boolean;
-};
-
-const STATUS_LABEL: Record<Room["status"], string> = {
-  waiting: "대기 중",
-  playing: "진행 중",
-  finished: "종료됨",
+  avatar_url?: string;
 };
 
 const avatarColors = [
@@ -58,10 +59,16 @@ export default function RoomScreen({
   onCopyInvite,
   onLeave,
   onRefresh,
+  onToggleReady,
+  onStartGame,
   pending,
   room,
+  onUpdateSettings,
+  onKickPlayer,
 }: RoomScreenProps) {
   const [chatDraft, setChatDraft] = useState("");
+  const [ws, setWs] = useState<WebSocket | null>(null);
+  const [codeCopyState, setCodeCopyState] = useState<CopyState>("idle");
   const [messages, setMessages] = useState<LocalMessage[]>(() => [
     {
       id: 1,
@@ -76,23 +83,76 @@ export default function RoomScreen({
     [room.players],
   );
 
+  const currentPlayer = useMemo(
+    () => room.players.find((player) => player.nickname === currentNickname),
+    [room.players, currentNickname]
+  );
+
+  const isHost = currentPlayer?.is_host ?? false;
+  const isReady = currentPlayer?.is_ready ?? false;
+  const allReady = room.players.filter((p) => !p.is_host).every((p) => p.is_ready);
+  const canStart = room.players.length >= 2 && allReady;
+
+  // App.tsx에서 넘겨받은 최신 onRefresh를 참조하기 위한 ref (의존성 무한 루프 방지)
+  const refreshRef = useRef(onRefresh);
+  useEffect(() => {
+    refreshRef.current = onRefresh;
+  }, [onRefresh]);
+
+  // 웹소켓 연결
+  useEffect(() => {
+    // 개발 환경에서는 백엔드 포트(8000)로 직접 연결하도록 주소를 구성합니다.
+    const wsHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+      ? `${window.location.hostname}:8000`
+      : window.location.host;
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const socket = new WebSocket(`${protocol}//${wsHost}/ws/rooms/${room.code}/`);
+
+    socket.onopen = () => {
+      // 내가 방에 들어왔음을 다른 사람들에게 알림 (참가자 목록 새로고침 유도)
+      socket.send(JSON.stringify({ type: "room_update" }));
+    };
+
+    socket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === "chat_message") {
+        setMessages((current) => [
+          ...current,
+          {
+            id: Date.now() + Math.random(),
+            author: data.nickname,
+            body: data.message,
+            own: data.nickname === currentNickname,
+            avatar_url: data.avatar_url,
+          },
+        ]);
+      } else if (data.type === "room_updated") {
+        refreshRef.current(); // 상태 변경 시 자동으로 방 정보 갱신
+      }
+    };
+
+    setWs(socket);
+
+    return () => socket.close();
+  }, [room.code, currentNickname]);
+
   function submitLocalMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     const body = chatDraft.trim();
-    if (!body) {
+    if (!body || !ws) {
       return;
     }
 
-    setMessages((current) => [
-      ...current,
-      {
-        id: Date.now(),
-        author: currentNickname || "나",
-        body,
-        own: true,
-      },
-    ]);
+    // 서버로 채팅 메시지 전송
+    ws.send(
+      JSON.stringify({
+        type: "chat_message",
+        nickname: currentNickname || "익명",
+        message: body,
+        avatar_url: currentPlayer?.avatar_url,
+      })
+    );
     setChatDraft("");
   }
 
@@ -170,6 +230,8 @@ export default function RoomScreen({
                 index={index}
                 key={player.id}
                 player={player}
+                isHostView={isHost}
+                onKick={() => onKickPlayer && onKickPlayer(player.id)}
               />
             ))}
           </div>
@@ -200,29 +262,25 @@ export default function RoomScreen({
               </div>
               <button
                 className="neo-button w-full justify-center bg-secondary-container text-on-secondary-container md:w-auto"
-                onClick={onCopyInvite}
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(room.code);
+                setCodeCopyState("copied");
+              } catch {
+                setCodeCopyState("failed");
+              }
+              setTimeout(() => setCodeCopyState("idle"), 1500);
+            }}
                 type="button"
               >
                 <Copy size={21} />
-                {copyState === "copied"
+            {codeCopyState === "copied"
                   ? "복사됨"
-                  : copyState === "failed"
+              : codeCopyState === "failed"
                     ? "복사 실패"
-                    : "링크 복사"}
+                : "코드 복사"}
               </button>
             </div>
-          </div>
-
-          <div className="grid gap-5 md:grid-cols-3">
-            <MetricCard label="상태" value={STATUS_LABEL[room.status]} />
-            <MetricCard
-              label="방장"
-              value={host ? host.nickname : "없음"}
-            />
-            <MetricCard
-              label="생성 시각"
-              value={new Date(room.created_at).toLocaleTimeString()}
-            />
           </div>
 
           {error ? (
@@ -238,63 +296,80 @@ export default function RoomScreen({
             </div>
 
             <div className="grid gap-6 md:grid-cols-2">
-              <SettingBlock label="Rounds">
-                <div className="inline-flex items-center border-[3px] border-ink bg-surface-container shadow-neo-sm">
-                  <button className="setting-stepper" disabled type="button">
-                    -
-                  </button>
-                  <div className="w-16 text-center font-display text-2xl font-bold">
-                    3
-                  </div>
-                  <button className="setting-stepper" disabled type="button">
-                    +
-                  </button>
-                </div>
+            <SettingBlock label="Write Time">
+              <select
+                className="h-14 w-full border-[3px] border-ink bg-surface px-3 font-display text-2xl font-bold shadow-neo-sm outline-none disabled:opacity-50"
+                disabled={!isHost || pending}
+                value={room.write_time || 60}
+                onChange={async (e) => {
+                  await onUpdateSettings?.({ write_time: Number(e.target.value) });
+                  ws?.send(JSON.stringify({ type: "room_update" }));
+                }}
+              >
+                <option value={40}>40 Seconds</option>
+                <option value={60}>60 Seconds</option>
+                <option value={80}>80 Seconds</option>
+                <option value={100}>100 Seconds</option>
+              </select>
               </SettingBlock>
 
               <SettingBlock label="Draw Time">
                 <select
-                  className="h-14 w-full border-[3px] border-ink bg-surface px-3 font-display text-2xl font-bold shadow-neo-sm outline-none"
-                  disabled
-                  value="80 Seconds"
+                  className="h-14 w-full border-[3px] border-ink bg-surface px-3 font-display text-2xl font-bold shadow-neo-sm outline-none disabled:opacity-50"
+                  disabled={!isHost || pending}
+                value={room.draw_time || 80}
+                onChange={async (e) => {
+                  await onUpdateSettings?.({ draw_time: Number(e.target.value) });
+                  ws?.send(JSON.stringify({ type: "room_update" }));
+                }}
                 >
-                  <option>80 Seconds</option>
+                  <option value={60}>60 Seconds</option>
+                  <option value={80}>80 Seconds</option>
+                  <option value={100}>100 Seconds</option>
+                  <option value={120}>120 Seconds</option>
                 </select>
-              </SettingBlock>
-
-              <SettingBlock label="Word Pack">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                  {["General", "Daily", "Movies"].map((wordPack, index) => (
-                    <div
-                      className={`border-[3px] border-ink p-3 text-center font-display text-xl font-bold shadow-neo-sm ${
-                        index === 0 ? "bg-tertiary-fixed" : "bg-surface"
-                      }`}
-                      key={wordPack}
-                    >
-                      {wordPack}
-                    </div>
-                  ))}
-                </div>
               </SettingBlock>
             </div>
           </div>
 
           <div className="flex flex-col gap-3 sm:flex-row">
+            {isHost ? (
+              <button
+                className="neo-button h-16 flex-1 justify-center bg-primary text-xl text-white disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!canStart || pending}
+                onClick={async () => {
+                  await onStartGame(); // 게임 시작 API 호출
+                  ws?.send(JSON.stringify({ type: "room_update" })); // 웹소켓으로 새로고침 신호 전송
+                }}
+                type="button"
+              >
+                {room.players.length < 2 ? "인원 부족" : allReady ? "게임 시작" : "준비 대기 중"}
+                <Play size={26} />
+              </button>
+            ) : (
+              <button
+                className={`neo-button h-16 flex-1 justify-center text-xl text-white disabled:cursor-not-allowed disabled:opacity-50 ${
+                  isReady ? "bg-error-container text-on-error-container" : "bg-primary"
+                }`}
+                disabled={pending}
+                onClick={async () => {
+                  await onToggleReady(!isReady); // 준비 상태 변경 API 호출
+                  ws?.send(JSON.stringify({ type: "room_update" })); // 웹소켓으로 새로고침 신호 전송
+                }}
+                type="button"
+              >
+                {isReady ? "준비 취소" : "준비하기"}
+                {isReady ? <X size={26} /> : <Check size={26} />}
+              </button>
+            )}
             <button
-              className="neo-button h-16 flex-1 justify-center bg-primary text-xl text-white"
-              disabled
-              type="button"
-            >
-              게임 시작
-              <Play size={26} />
-            </button>
-            <a
               className="neo-button h-16 justify-center bg-surface px-5 text-ink"
-              href={inviteUrl}
+              onClick={onCopyInvite}
+              type="button"
             >
               <Clipboard size={22} />
               초대 링크
-            </a>
+            </button>
           </div>
         </section>
 
@@ -307,22 +382,33 @@ export default function RoomScreen({
           <div className="dot-pattern flex flex-1 flex-col gap-4 overflow-y-auto p-4">
             {messages.map((message) => (
               <div
-                className={`max-w-[86%] ${
-                  message.own ? "self-end text-right" : "self-start"
+                className={`flex max-w-[86%] gap-2 ${
+                  message.own ? "self-end flex-row-reverse" : "self-start"
                 }`}
                 key={message.id}
               >
-                <div className="mb-1 px-1 font-mono text-xs font-bold text-on-surface-variant">
-                  {message.author}
+                <div className="mt-1 shrink-0">
+                  {message.avatar_url ? (
+                    <img src={message.avatar_url} className="h-8 w-8 rounded-full border-[2px] border-ink object-cover" alt="avatar" />
+                  ) : (
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full border-[2px] border-ink bg-surface-variant text-on-surface-variant">
+                      <Users size={14} />
+                    </div>
+                  )}
                 </div>
-                <div
-                  className={`border-[3px] border-ink px-4 py-2 font-body text-sm font-medium leading-6 shadow-neo-sm ${
-                    message.own
-                      ? "rounded-lg rounded-tr-none bg-primary-container text-on-primary-container"
-                      : "rounded-lg rounded-tl-none bg-secondary-fixed"
-                  }`}
-                >
-                  {message.body}
+                <div className={`flex flex-col ${message.own ? "items-end" : "items-start"}`}>
+                  <div className="mb-1 px-1 font-mono text-xs font-bold text-on-surface-variant">
+                    {message.author}
+                  </div>
+                  <div
+                    className={`border-[3px] border-ink px-4 py-2 font-body text-sm font-medium leading-6 shadow-neo-sm ${
+                      message.own
+                        ? "rounded-lg rounded-tr-none bg-primary-container text-on-primary-container"
+                        : "rounded-lg rounded-tl-none bg-secondary-fixed"
+                    }`}
+                  >
+                    {message.body}
+                  </div>
                 </div>
               </div>
             ))}
@@ -357,21 +443,28 @@ function PlayerRow({
   currentNickname,
   index,
   player,
+  isHostView,
+  onKick,
 }: {
   currentNickname: string;
   index: number;
   player: RoomPlayer;
+  isHostView: boolean;
+  onKick: () => void;
 }) {
   const isCurrentPlayer = currentNickname === player.nickname;
   const colorClass = avatarColors[index % avatarColors.length];
+  const avatarUrl = player.avatar_url;
 
   return (
     <div className="relative flex items-center gap-3 border-[3px] border-ink bg-surface p-3 shadow-neo-sm">
-      <div
-        className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-[3px] border-ink ${colorClass}`}
-      >
-        <Users size={22} />
-      </div>
+      {avatarUrl ? (
+        <img src={avatarUrl} alt="profile" className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-[3px] border-ink object-cover" />
+      ) : (
+        <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-[3px] border-ink ${colorClass}`}>
+          <Users size={22} />
+        </div>
+      )}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <div className="truncate font-display text-xl font-bold">
@@ -381,9 +474,6 @@ function PlayerRow({
             <Crown className="shrink-0 text-primary" size={19} />
           ) : null}
         </div>
-        <div className="font-mono text-xs font-bold text-on-surface-variant">
-          Score: {player.score}
-        </div>
       </div>
       <div className="flex flex-col items-end gap-1">
         {player.is_host ? (
@@ -391,21 +481,22 @@ function PlayerRow({
             Host
           </span>
         ) : null}
-        <span className="font-mono text-[11px] font-bold text-on-surface-variant">
-          {player.is_ready ? "Ready" : isCurrentPlayer ? "You" : "Waiting"}
-        </span>
+        <div className="mt-1 flex items-center gap-1.5">
+          <span className="font-mono text-[11px] font-bold text-on-surface-variant">
+            {isCurrentPlayer && !player.is_ready ? "You" : player.is_ready ? "Ready" : "Waiting"}
+          </span>
+          <div 
+            className={`h-3 w-3 rounded-full border-[2px] border-ink shadow-neo-sm ${
+              player.is_ready ? "bg-[#6dfe9c]" : "bg-[#1b1b1e] opacity-30"
+            }`} 
+          />
+        </div>
+        {isHostView && !player.is_host && (
+          <button onClick={onKick} className="mt-1 font-mono text-[11px] font-bold text-error hover:underline">
+            내보내기
+          </button>
+        )}
       </div>
-    </div>
-  );
-}
-
-function MetricCard({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="neo-panel bg-surface p-4">
-      <div className="font-mono text-xs font-bold uppercase text-on-surface-variant">
-        {label}
-      </div>
-      <div className="mt-2 truncate font-display text-2xl font-bold">{value}</div>
     </div>
   );
 }

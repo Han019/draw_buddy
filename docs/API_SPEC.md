@@ -95,6 +95,10 @@ DrawBuddy는 Discord 로그인 또는 게스트 닉네임으로 방에 참가하
   - 참가자별 `GameChain` 생성
   - 참가자별 첫 문장용 `GameTurn` 생성
   - `DEFAULT_PROMPTS`에서 `random.sample()`로 서로 다른 기본 문장 배정
+- WebSocket (Django Channels)
+  - 개발용 InMemoryChannelLayer 설정
+  - `ws/rooms/{room_code}/` 로비 실시간 채팅 및 방 상태 동기화
+  - 결과 공개 화면 슬라이드 동기화 및 결과 채팅 기능
 - migration 파일
   - `0001_initial.py`
   - `0002_rename_room_fields.py`
@@ -112,14 +116,11 @@ DrawBuddy는 Discord 로그인 또는 게스트 닉네임으로 방에 참가하
 - 방 참가 API 연결
 - 방 조회 API 연결
 - 로비/방 화면 디자인 적용
+- 인게임 프롬프트, 드로잉, 예측, 결과창 API 연동 완료
 
 ### 2.2 추가 구현 필요 (향후 계획)
 
-- Django Channels / WebSocket
-- 로비 채팅 WebSocket
-- 결과 채팅 WebSocket
 - 그림 선 이벤트 저장 WebSocket
-- 결과 공개 화면
 
 ## 3. 현재 데이터 모델
 
@@ -1049,11 +1050,13 @@ Swagger summary:
 
 ## 8. WebSocket 명세
 
-Django Channels는 아직 구현되어 있지 않습니다. 아래는 추가 구현 예정 명세입니다.
+Django Channels가 도입되었습니다 (로비 채널 프론트/백 연동 완료).
 
 ### 8.1 로비 WebSocket
 
 Endpoint:
+
+상태: 구현됨
 
 ```text
 /ws/rooms/{room_code}/
@@ -1338,8 +1341,10 @@ Room/로비 API, 게임 시작 API, 현재 게임 상태 조회 API 및 **첫 �
 
 다음 작업:
 
-1. 프론트엔드 연동 작업
-2. WebSocket 채팅/그림 이벤트 저장
+1. 특정 참가자 턴 제한 시간 만료 시 서버 자동 제출(Auto Submit) 처리
+2. 방 퇴장(Leave) API 호출 시 웹소켓 방 정보 업데이트(Room Update) 브로드캐스트
+3. 디스코드 사용자 프로필 이미지 직렬화/렌더링 디버깅
+4. (선택) 그림 그리기 과정 실시간 웹소켓 연동
 
 ## 12. 공통 오류 응답
 

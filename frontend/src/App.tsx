@@ -1,7 +1,8 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { createRoom, getRoom, joinRoom, Room, getCsrfToken } from "./api";
+import { createRoom, getRoom, joinRoom, Room, getAuthMe, logout, updateReady, startGame, updateRoomSettings } from "./api";
 import LobbyScreen, { EntryMode } from "./screens/LobbyScreen";
 import RoomScreen from "./screens/RoomScreen";
+import GameScreen from "./screens/GameScreen";
 
 export type DiscordUser = {
   id: number;
@@ -43,13 +44,10 @@ export default function App() {
       try {
         // 앱이 켜질 때 CSRF 토큰을 쿠키에 설정받습니다.
         await fetch("/api/csrf/");
-        const res = await fetch("/api/auth/me/");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.user) {
-            setAuthUser(data.user);
-            setNickname((prev) => prev || data.user.global_name || data.user.username);
-          }
+        const data = await getAuthMe();
+        if (data.user) {
+          setAuthUser(data.user);
+          setNickname((prev) => prev || data.user.global_name || data.user.username);
         }
       } catch (caught) {
         console.error("인증 정보를 불러오지 못했습니다.", caught);
@@ -62,10 +60,7 @@ export default function App() {
 
   async function handleLogout() {
     try {
-      await fetch("/api/auth/logout/", { 
-        method: "POST",
-        headers: { "X-CSRFToken": getCsrfToken() }
-      });
+      await logout();
       setAuthUser(null);
       setNickname("");
     } catch (caught) {
@@ -163,18 +158,74 @@ export default function App() {
     window.history.pushState({}, "", "/");
   }
 
+  async function handleToggleReady(isReady: boolean) {
+    if (!room) return;
+    setPending(true);
+    setError("");
+    try {
+      const updatedRoom = await updateReady(room.code, isReady);
+      setRoom(updatedRoom);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "준비 상태 변경에 실패했습니다.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleStartGame() {
+    if (!room) return;
+    setPending(true);
+    setError("");
+    try {
+      await startGame(room.code);
+      // 게임 시작이 성공하면 방 상태를 다시 불러옵니다 (playing 상태 확인)
+      const updatedRoom = await getRoom(room.code);
+      setRoom(updatedRoom);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "게임 시작에 실패했습니다.");
+    } finally {
+      setPending(false);
+    }
+  }
+
+  async function handleUpdateSettings(settings: Partial<Room>) {
+    if (!room) return;
+    setPending(true);
+    setError("");
+    try {
+      const updatedRoom = await updateRoomSettings(room.code, settings);
+      setRoom(updatedRoom);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "설정 변경에 실패했습니다.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return room ? (
-    <RoomScreen
-      copyState={copyState}
-      currentNickname={nickname.trim()}
-      error={error}
-      inviteUrl={inviteUrl}
-      onCopyInvite={copyInvite}
-      onLeave={leaveLocalRoom}
-      onRefresh={refreshRoom}
-      pending={pending}
-      room={room}
-    />
+    room.status === "playing" && room.current_game_id ? (
+      <GameScreen 
+        room={room} 
+        gameId={room.current_game_id} 
+        onLeave={leaveLocalRoom} 
+        onReturnToRoom={refreshRoom}
+      />
+    ) : (
+      <RoomScreen
+        copyState={copyState}
+        currentNickname={nickname.trim()}
+        error={error}
+        inviteUrl={inviteUrl}
+        onCopyInvite={copyInvite}
+        onLeave={leaveLocalRoom}
+        onRefresh={refreshRoom}
+        onToggleReady={handleToggleReady}
+        onStartGame={handleStartGame}
+        pending={pending}
+        onUpdateSettings={handleUpdateSettings}
+        room={room}
+      />
+    )
   ) : (
     <LobbyScreen
       error={error}

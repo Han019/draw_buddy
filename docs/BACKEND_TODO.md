@@ -649,16 +649,18 @@ DrawingReplay
 
 ### 5.1 Channels 기본 설정
 
-1. `channels` 설치.
-2. `INSTALLED_APPS`에 `channels` 추가.
-3. `ASGI_APPLICATION` 설정.
-4. `routing.py` 추가.
+1. ~~`channels` 설치.~~ (완료)
+2. ~~`INSTALLED_APPS`에 `channels` 추가.~~ (완료)
+3. ~~`ASGI_APPLICATION` 설정.~~ (완료)
+4. ~~`routing.py` 추가.~~ (완료)
 5. 개발 단계에서는 InMemory channel layer로 시작 가능.
 6. 배포 또는 멀티 프로세스 환경에서는 Redis 필요.
 
 ### 5.2 로비 WebSocket
 
 Endpoint:
+
+현재 상태: 프론트/백 연동 완료
 
 ```text
 /ws/rooms/{room_code}/
@@ -800,8 +802,14 @@ Endpoint:
 ~~9. `GET /api/games/{game_id}/results/` (게임 결과 앨범 조회 API)~~ (완료)
 ~~10. Discord 로그인 관련 추가 API (`/api/auth/me/`, `/api/auth/logout/`)~~ (완료)
 
-1. 프론트엔드 API 연동 (인게임 화면 UI 마이그레이션 완료, 실제 데이터 Fetch 연결 진행 중)
-2. WebSocket 채널 연결 (채팅 및 실시간 턴 동기화)
+~~1. 프론트엔드 API 연동 (인게임 화면 UI 마이그레이션 완료, 실제 데이터 Fetch 연결 완료)~~ (완료)
+~~2. WebSocket 채널 연결 (채팅 및 실시간 턴 동기화)~~ (로비 완료, 결과 화면 슬라이드 동기화 완료)
+~~3. 인게임 통합 컴포넌트(`GameScreen.tsx`) 구현 및 화면 전환 연동~~ (완료)
+
+새로운 다음 작업 (안정화 및 버그 수정):
+1. 특정 턴 제한 시간 만료 시 백엔드 단에서 강제 자동 제출(Auto Submit) 처리 구현 (진행 정지 방지)
+2. 방 나가기(Leave API) 시 백엔드 채널 레이어를 통한 잔상 해결 (Room Update 브로드캐스트)
+3. 디스코드 프로필 아바타 이미지 직렬화 디버깅
 
 ## 9. 구현 시 주의사항
 
