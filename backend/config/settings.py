@@ -114,6 +114,11 @@ DATABASES = {
 if os.environ.get("DATABASE_URL"):
     DATABASES['default'] = dj_database_url.parse(os.environ.get("DATABASE_URL"))
 
+# 소셜 로그인(세션)을 프론트엔드와 안전하게 연동하기 위한 설정
+SESSION_COOKIE_SAMESITE = 'None' if not DEBUG else 'Lax'
+SESSION_COOKIE_SECURE = not DEBUG
+CORS_ALLOW_CREDENTIALS = True
+
 REST_FRAMEWORK = {
     "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
