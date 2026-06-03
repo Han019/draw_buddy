@@ -70,6 +70,7 @@ class DiscordLoginAPIView(APIView):
     @extend_schema(
         summary = "디스코드 로그인 리다이렉트",
         description = "디스코드 로그인 페이지로 사용자를 이동시킵니다.",
+        responses={302: None}
     )
     def get(self,request):
         client_id = os.environ.get("DISCORD_CLIENT_ID")
@@ -82,6 +83,7 @@ class DiscordCallbackAPIView(APIView):
     @extend_schema(
         summary = "디스코드 로그인 콜백",
         description = "디스코드에서 돌아오는 코드를 받아 유저 정보를 저장",
+        responses={302: None}
     )
     def get(self,request):
         frontend_url = os.environ.get("FRONTEND_BASE_URL", "http://127.0.0.1:5173")
@@ -153,7 +155,7 @@ class AuthMeAPIView(APIView):
     @extend_schema(
         summary="현재 로그인 사용자 조회",
         description="현재 세션에 로그인된 디스코드 사용자 프로필을 반환합니다.(비로그인 시 user:null 반환)",
-        responses={200,AuthMeResponseSerializer}
+        responses={200: AuthMeResponseSerializer}
     )
     def get(self,request):
         discord_user_id = request.session.get('discord_user_id')
@@ -174,6 +176,7 @@ class LogoutAPIView(APIView):
     @extend_schema(
         summary="로그아웃",
         description="현재 세션을 만료시키고 로그아웃 처리합니다.",
+        request=None,
         responses = {200 : dict}
     )
     def post(self,request):
@@ -565,6 +568,8 @@ class PromptSubmitAPIView(APIView):
     @extend_schema(
         summary = "첫 문장 제출",
         description = "첫 문장을 작성하는 api입니다.",
+        request=PromptSubmitSerializer,
+        responses={200: dict}
     )
     @transaction.atomic
     def post(self, request,game_id, turn_id):
@@ -604,7 +609,11 @@ class PromptSubmitAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
-    @extend_schema(summary="첫 문장 제출 취소")
+    @extend_schema(
+        summary="첫 문장 제출 취소",
+        request=None,
+        responses={204: None}
+    )
     @transaction.atomic
     def delete(self, request, game_id, turn_id):
         game_session = get_object_or_404(GameSession, id=game_id)
@@ -724,7 +733,11 @@ class DrawingCompleteAPIView(APIView):
             status = status.HTTP_200_OK
         )
 
-    @extend_schema(summary="그림 제출 취소")
+    @extend_schema(
+        summary="그림 제출 취소",
+        request=None,
+        responses={204: None}
+    )
     @transaction.atomic
     def delete(self, request, game_id, turn_id):
         game_session = get_object_or_404(GameSession, id=game_id)
@@ -790,7 +803,11 @@ class GuessSubmitAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
-    @extend_schema(summary="그림 설명 제출 취소")
+    @extend_schema(
+        summary="그림 설명 제출 취소",
+        request=None,
+        responses={204: None}
+    )
     @transaction.atomic
     def delete(self, request, game_id, turn_id):
         game_session = get_object_or_404(GameSession, id=game_id)
