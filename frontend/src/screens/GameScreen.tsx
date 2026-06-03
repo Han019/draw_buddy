@@ -44,9 +44,9 @@ export default function GameScreen({ room, gameId, onLeave, onReturnToRoom }: Ga
     const timer = setInterval(fetchGameState, 3000); // 혹시 모를 누락 방지용 백업 폴링
 
     // 로비에서 쓰던 방 웹소켓을 그대로 연결해서 턴 전환 신호를 주고받습니다.
-    const wsHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+    const wsHost = import.meta.env.VITE_WS_HOST || (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
       ? `${window.location.hostname}:8000`
-      : window.location.host;
+      : window.location.host);
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${wsHost}/ws/rooms/${room.code}/`);
 

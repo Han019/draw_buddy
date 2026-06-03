@@ -143,9 +143,9 @@ export default function ResultScreen({ room, gameId, onExit, onReturnToRoom }: R
 
   // 채팅 웹소켓 연결 (로비와 동일한 채널 사용)
   useEffect(() => {
-    const wsHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+    const wsHost = import.meta.env.VITE_WS_HOST || (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
       ? `${window.location.hostname}:8000`
-      : window.location.host;
+      : window.location.host);
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${wsHost}/ws/rooms/${room.code}/`);
 

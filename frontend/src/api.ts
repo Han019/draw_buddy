@@ -36,6 +36,8 @@ export function getCsrfToken() {
   return match ? decodeURIComponent(match[2]) : "";
 }
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "";
+
 async function requestJson<T>(
   path: string,
   init?: RequestInit,
@@ -50,7 +52,7 @@ async function requestJson<T>(
     headers["X-CSRFToken"] = getCsrfToken();
   }
 
-  const response = await fetch(path, {
+  const response = await fetch(API_BASE_URL + path, {
     ...init,
     headers,
     credentials: "include", // 백엔드(Django)와 세션 쿠키를 주고받기 위해 필수!

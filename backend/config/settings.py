@@ -42,6 +42,9 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:5175",
 ]
 
+FRONTEND_URL = os.environ.get('FRONTEND_BASE_URL')
+if FRONTEND_URL:
+    CSRF_TRUSTED_ORIGINS.append(FRONTEND_URL.strip())
 
 # Application definition
 

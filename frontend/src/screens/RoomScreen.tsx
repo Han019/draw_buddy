@@ -102,9 +102,9 @@ export default function RoomScreen({
   // 웹소켓 연결
   useEffect(() => {
     // 개발 환경에서는 백엔드 포트(8000)로 직접 연결하도록 주소를 구성합니다.
-    const wsHost = window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
+    const wsHost = import.meta.env.VITE_WS_HOST || (window.location.hostname === "127.0.0.1" || window.location.hostname === "localhost"
       ? `${window.location.hostname}:8000`
-      : window.location.host;
+      : window.location.host);
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${wsHost}/ws/rooms/${room.code}/`);
 
