@@ -31,6 +31,12 @@ type JoinRoomRequest = {
   nickname: string;
 };
 
+export function fetchCsrfToken() {
+  return fetch(API_BASE_URL + "/api/csrf/", {
+    method: "GET",
+    credentials: "include", // 크로스 도메인 환경에서 세션 쿠키를 받기 위해 필수
+  });
+}
 export function getCsrfToken() {
   const match = document.cookie.match(new RegExp("(^| )csrftoken=([^;]+)"));
   return match ? decodeURIComponent(match[2]) : "";

@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { createRoom, getRoom, joinRoom, Room, getAuthMe, logout, updateReady, startGame, updateRoomSettings } from "./api";
+import { createRoom, getRoom, joinRoom, Room, getAuthMe, logout, updateReady, startGame, updateRoomSettings,fetchCsrfToken } from "./api";
 import LobbyScreen, { EntryMode } from "./screens/LobbyScreen";
 import RoomScreen from "./screens/RoomScreen";
 import GameScreen from "./screens/GameScreen";
@@ -43,7 +43,7 @@ export default function App() {
     async function fetchAuth() {
       try {
         // 앱이 켜질 때 CSRF 토큰을 쿠키에 설정받습니다.
-        await fetch("/api/csrf/");
+        await fetchCsrfToken(); 
         const data = await getAuthMe();
         if (data.user) {
           setAuthUser(data.user);
